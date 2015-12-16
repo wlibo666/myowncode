@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
+	"os"
 	"strconv"
 	"time"
 )
@@ -13,8 +14,8 @@ var (
 	password string = ""
 )
 
-var pool *redis.Pool
 var pool1 *redis.Pool
+var pool2 *redis.Pool
 var succTimes int = 0
 var failTimes int = 0
 
@@ -30,10 +31,7 @@ var prefix string = `
 [22599] 01 Dec 18:05:06.565 # slotsmgrt: timeout target 10.58.65.252:6380, lasttime = 1448964290, now = 1448964306
 `
 
-func setKeyValue(i int) {
-	c := pool.Get()
-	defer c.Close()
-
+func setKeyValue(i int, c redis.Conn) {
 	t := strconv.Itoa(i)
 	value := "value-" + t + prefix
 
@@ -104,25 +102,30 @@ func pool1Init() *redis.Pool {
 
 // 往redis数据库插入数据
 func insertData() {
-	pool = poolInit()
+	pool1 = poolInit()
+	c := pool1.Get()
 	for i := 0; i < 5000000; i++ {
-		setKeyValue(i)
+		setKeyValue(i, c)
 		if i%5000 == 0 {
 			fmt.Printf("now [%s] insert suc %d times, fail %d times.\n", time.Now().String(), succTimes, failTimes)
 		}
 	}
+	defer c.Close()
+	defer pool1.Close()
 }
 
 // 测试迁移时集群是否可用
 func clusIsService() {
+	pool1 = poolInit()
+	pool2 = pool1Init()
+	c1 := pool1.Get()
+	c2 := pool2.Get()
 	for i := 0; i < 300000; i++ {
-		pool = poolInit()
-		pool1 = pool1Init()
 		var c redis.Conn
 		if i%2 == 0 {
-			c = pool.Get()
+			c = c1
 		} else {
-			c = pool1.Get()
+			c = c2
 		}
 
 		t := strconv.Itoa(i)
@@ -138,7 +141,6 @@ func clusIsService() {
 			failTimes++
 			fmt.Printf("GET key-%s failed,err %s\n", t, err.Error())
 		}
-		c.Close()
 		var st time.Duration
 		st = time.Second * 30
 		//time.Sleep(st)
@@ -152,13 +154,55 @@ func clusIsService() {
 			time.Sleep(st)
 		}
 	}
+	defer c1.Close()
+	defer c2.Close()
+	defer pool1.Close()
+	defer pool2.Close()
 	fmt.Printf("end get key success times %d,fail times %d\n", succTimes, failTimes)
 }
 
-func main() {
+func insertHashData() {
+	pool1 = poolInit()
+	c := pool1.Get()
+	keyname := "hashKey"
+	for i := 0; i < 30000; i++ {
+		t := strconv.Itoa(i)
+		field := ("field-" + t)
+		value := ("hashvalue-" + t + prefix)
 
-	clusIsService()
-	//insertData()
+		_, err := c.Do("HSET", keyname, field, value)
+		if err != nil {
+			failTimes++
+			fmt.Printf("HSET %s %s failed.\n", keyname, field)
+		} else {
+			succTimes++
+		}
+	}
+	c.Close()
+	pool1.Close()
+}
+
+func usage(program string) {
+	fmt.Printf("%s cmdtype\n", program)
+	fmt.Printf("    cmd{insertData | getData | insertHash}\n")
+}
+
+func main() {
+	if len(os.Args) != 2 {
+		usage(os.Args[0])
+		os.Exit(0)
+	}
+	switch os.Args[1] {
+	case "insertData":
+		insertData()
+	case "getData":
+		clusIsService()
+	case "insertHash":
+		insertHashData()
+	default:
+		usage(os.Args[0])
+		os.Exit(0)
+	}
 	printResult()
 
 }

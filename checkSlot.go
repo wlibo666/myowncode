@@ -123,6 +123,13 @@ func poolInit() *redis.Pool {
 	}
 }
 
+func checkInvalidData(key string, keytype string, slotId int) {
+	if allSlots.sinfo[slotId] != int(groupId) {
+		Slog.Printf("key [%s], type [%s], slot [%d] is not in group[%d],may be invalid data.",
+			key, keytype, slotId, groupId)
+	}
+}
+
 func checkPerKey(c redis.Conn, key string) error {
 	keytype, err := c.Do("TYPE", key)
 	if err != nil {
@@ -143,7 +150,7 @@ func checkPerKey(c redis.Conn, key string) error {
 	case "hash":
 		reply, err = c.Do("HLEN", key)
 	case "none":
-		Slog.Printf("key [%s] type [none], may be invalid data.", key)
+		Slog.Printf("key [%s] type [none], may be deleted.", key)
 	default:
 		Slog.Printf("key [%s] type [%s] is invalid", key, keytype)
 		return errors.New("key type is invalid")
@@ -151,6 +158,10 @@ func checkPerKey(c redis.Conn, key string) error {
 	if keytype == "none" {
 		return nil
 	}
+
+	var slotIndex int = hashSlot([]byte(key))
+	checkInvalidData(key, keytype.(string), slotIndex)
+
 	if err != nil {
 		Slog.Printf("key [%s] get len failed,err:%s", key, err.Error())
 		return errors.New("get key len failed")
@@ -173,9 +184,8 @@ func checkPerKey(c redis.Conn, key string) error {
 	default:
 		keylen = reply.(int64)
 	}
-	var slotIndex int
+
 	if keylen > 4096 {
-		slotIndex = hashSlot([]byte(key))
 		Slog.Printf("key [%s],type [%s], len is [%d],too long,slot [%d] should not migrate", key, keytype, keylen, slotIndex)
 		allSlots.failflag[slotIndex] = true
 		return nil
@@ -223,7 +233,7 @@ func checkKeysFile(filename string) error {
 		//fmt.Printf("now check key[%s]\n", line)
 		err = checkPerKey(c, line)
 		if err != nil {
-			Slog.Printf("key [%s], slot [%d] may be invalid data", line, hashSlot([]byte(line)))
+			Slog.Printf("check key [%s], slot [%d] failed,err:%s", line, hashSlot([]byte(line)), err.Error())
 			continue
 		}
 	}
