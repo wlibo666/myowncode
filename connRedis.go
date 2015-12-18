@@ -165,7 +165,7 @@ func insertHashData() {
 	pool1 = poolInit()
 	c := pool1.Get()
 	keyname := "hashKey"
-	for i := 1000000; i < 2000000; i++ {
+	for i := 0; i < 2000000; i++ {
 		t := strconv.Itoa(i)
 		field := ("field-" + t)
 		value := ("hashvalue-" + t + prefix)
@@ -173,7 +173,7 @@ func insertHashData() {
 		_, err := c.Do("HSET", keyname, field, value)
 		if err != nil {
 			failTimes++
-			fmt.Printf("HSET %s %s failed.\n", keyname, field)
+			fmt.Printf("HSET %s %s failed,err:%s.\n", keyname, field, err.Error())
 		} else {
 			//fmt.Printf("reply is %v\n", reply)
 			succTimes++
