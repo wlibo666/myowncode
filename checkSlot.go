@@ -33,7 +33,7 @@ func hashSlot(key []byte) int {
 }
 
 var Slog *log.Logger
-var logfile *os.File
+var LogFile *os.File
 
 type SlotsInfo struct {
 	zkConn      zkhelper.Conn
@@ -44,20 +44,26 @@ type SlotsInfo struct {
 	slogname    string
 }
 
-var allSlots SlotsInfo = SlotsInfo{
+var AllSlots SlotsInfo = SlotsInfo{
 	zkAddr:      "10.98.28.5:2181",
 	productName: "pusher",
 	sinfo:       make(map[int]int),
 	slogname:    "checkSlotKeys.log",
 }
 
+func confSlots(logFileName string, zkAddr string, dbName string) {
+	AllSlots.slogname = (logFileName + ".log")
+	AllSlots.zkAddr = zkAddr
+	AllSlots.productName = dbName
+}
+
 func initLog() error {
 	var err error
-	logfile, err = os.Create(allSlots.slogname)
+	LogFile, err = os.Create(AllSlots.slogname)
 	if err != nil {
 		return errors.New("Create log file failed")
 	}
-	Slog = log.New(logfile, "", log.LstdFlags)
+	Slog = log.New(LogFile, "", log.LstdFlags)
 	if Slog == nil {
 		return errors.New("log New failed")
 	}
@@ -76,41 +82,41 @@ func getSlotInfo(zkConn zkhelper.Conn, productName string, slotid uint32) (*md.S
 
 func getSlots() error {
 	var err error
-	allSlots.zkConn, err = zkhelper.ConnectToZk(allSlots.zkAddr, 30000)
+	AllSlots.zkConn, err = zkhelper.ConnectToZk(AllSlots.zkAddr, 30000)
 	if err != nil {
-		fmt.Printf("connect to zk [%s] failed\n", allSlots.zkAddr)
+		fmt.Printf("connect to zk [%s] failed\n", AllSlots.zkAddr)
 		return err
 	}
 	var i uint32 = 0
 	for i = 0; i < MaxSlotNum; i++ {
-		s, serr := getSlotInfo(allSlots.zkConn, allSlots.productName, i)
+		s, serr := getSlotInfo(AllSlots.zkConn, AllSlots.productName, i)
 		if serr != nil {
 			return serr
 		}
-		allSlots.sinfo[s.Id] = s.GroupId
+		AllSlots.sinfo[s.Id] = s.GroupId
 		Slog.Printf("slot index [%d],group id [%d]", s.Id, s.GroupId)
 	}
-	allSlots.zkConn.Close()
+	AllSlots.zkConn.Close()
 	return nil
 }
 
 func printSlotInfo() {
 	var i uint32 = 0
 	for i = 0; i < MaxSlotNum; i++ {
-		fmt.Printf("slot id [%d],group id [%d]\n", i, allSlots.sinfo[int(i)])
+		fmt.Printf("slot id [%d],group id [%d]\n", i, AllSlots.sinfo[int(i)])
 	}
 }
 
-var redisAddr string
-var groupId int64
-var pool *redis.Pool
+var RedisAddr string
+var GroupId int64
+var RedisPool *redis.Pool
 
-func poolInit() *redis.Pool {
+func RedisPoolInit() *redis.Pool {
 	return &redis.Pool{
 		MaxIdle:     3,
 		IdleTimeout: 240 * time.Second,
 		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", redisAddr)
+			c, err := redis.Dial("tcp", RedisAddr)
 			if err != nil {
 				return nil, err
 			}
@@ -123,10 +129,18 @@ func poolInit() *redis.Pool {
 	}
 }
 
-func checkInvalidData(key string, keytype string, slotId int) {
-	if allSlots.sinfo[slotId] != int(groupId) {
+func checkInvalidData(c redis.Conn, key string, keytype string, slotId int) {
+	if AllSlots.sinfo[slotId] != int(GroupId) {
 		Slog.Printf("key [%s], type [%s], slot [%d] is not in group[%d],may be invalid data.",
-			key, keytype, slotId, groupId)
+			key, keytype, slotId, GroupId)
+	} else {
+		return
+	}
+	_, err := c.Do("DEL", key)
+	if err != nil {
+		Slog.Printf("DEL %s failed,err:%s", key, err.Error())
+	} else {
+		Slog.Printf("DEL %s success", key)
 	}
 }
 
@@ -160,7 +174,7 @@ func checkPerKey(c redis.Conn, key string) error {
 	}
 
 	var slotIndex int = hashSlot([]byte(key))
-	checkInvalidData(key, keytype.(string), slotIndex)
+	checkInvalidData(c, key, keytype.(string), slotIndex)
 
 	if err != nil {
 		Slog.Printf("key [%s] get len failed,err:%s", key, err.Error())
@@ -187,7 +201,7 @@ func checkPerKey(c redis.Conn, key string) error {
 
 	if keylen > 4096 {
 		Slog.Printf("key [%s],type [%s], len is [%d],too long,slot [%d] should not migrate", key, keytype, keylen, slotIndex)
-		allSlots.failflag[slotIndex] = true
+		AllSlots.failflag[slotIndex] = true
 		return nil
 		//return errors.New("key's len is too long")
 	}
@@ -196,13 +210,13 @@ func checkPerKey(c redis.Conn, key string) error {
 }
 
 func checkKeysFile(filename string) error {
-	pool = poolInit()
-	if pool == nil {
-		fmt.Printf("init pool failed")
+	RedisPool = RedisPoolInit()
+	if RedisPool == nil {
+		fmt.Printf("init RedisPool failed")
 		return errors.New("poll init failed")
 	}
-	Slog.Println("redis pool init success")
-	defer pool.Close()
+	Slog.Println("redis RedisPool init success")
+	defer RedisPool.Close()
 	f, err := os.Open(filename)
 	if err != nil {
 		fmt.Printf("open file [%s] failed\n", filename)
@@ -213,10 +227,10 @@ func checkKeysFile(filename string) error {
 	var checkNum int32 = 0
 	Slog.Println("now begin check kyes...")
 
-	c := pool.Get()
+	c := RedisPool.Get()
 	if c == nil {
 		fmt.Printf("get poll failed")
-		return errors.New("get client from pool failed.")
+		return errors.New("get client from RedisPool failed.")
 	}
 	defer c.Close()
 	for {
@@ -241,15 +255,15 @@ func checkKeysFile(filename string) error {
 }
 
 func printSlotCheckResult() {
-	//fmt.Printf("map int bool len:%d\n", len(allSlots.failflag))
-	for i := 0; i < len(allSlots.failflag); i++ {
-		if allSlots.sinfo[i] == int(groupId) && allSlots.failflag[i] != true {
+	//fmt.Printf("map int bool len:%d\n", len(AllSlots.failflag))
+	for i := 0; i < len(AllSlots.failflag); i++ {
+		if AllSlots.sinfo[i] == int(GroupId) && AllSlots.failflag[i] != true {
 			Slog.Printf("slot [%d] can be migrated", i)
 			fmt.Printf("slot [%d] can be migrated\n", i)
 		}
 	}
-	for i := 0; i < len(allSlots.failflag); i++ {
-		if allSlots.sinfo[i] == int(groupId) && allSlots.failflag[i] == true {
+	for i := 0; i < len(AllSlots.failflag); i++ {
+		if AllSlots.sinfo[i] == int(GroupId) && AllSlots.failflag[i] == true {
 			Slog.Printf("slot [%d] can not be migrated", i)
 			fmt.Printf("slot [%d] can not be migrated\n", i)
 		}
@@ -257,40 +271,47 @@ func printSlotCheckResult() {
 }
 
 func usage(pragramName string) {
-	fmt.Printf("%s keyfile redisAddr groupId\n", pragramName)
+	fmt.Printf("%s keyfile ZkAddr DbName RedisAddr GroupId\n", pragramName)
 }
 
 func main() {
-	if len(os.Args) != 4 {
+	var err error
+	// check parameters
+	if len(os.Args) != 6 {
 		usage(os.Args[0])
 		os.Exit(0)
 	}
-
-	err := initLog()
+	keyFileName := os.Args[1]
+	zkAddr := os.Args[2]
+	dbName := os.Args[3]
+	RedisAddr = os.Args[4]
+	gid := os.Args[5]
+	GroupId, err = strconv.ParseInt(gid, 10, 32)
+	if err != nil {
+		usage(os.Args[0])
+		fmt.Printf("GroupId must be a int number\n")
+		os.Exit(0)
+	}
+	fmt.Printf("KeyFileName[%s],ZkAddr[%s],DbName:[%s],RedisAddr[%s],GroupId [%d]\n",
+		keyFileName, zkAddr, dbName, RedisAddr, GroupId)
+	// configure slots information
+	confSlots(os.Args[0], zkAddr, dbName)
+	// initialize logfile
+	err = initLog()
 	if err != nil {
 		fmt.Printf("init log failed,err:%s", err.Error())
 		return
 	}
-
-	e := getSlots()
-	if e != nil {
+	// get slot group information from zookeeper
+	err = getSlots()
+	if err != nil {
 		fmt.Printf("get slot info failed,err:%s\n", err.Error())
 		return
 	}
 	//printSlotInfo()
-
-	filename := os.Args[1]
-	redisAddr = os.Args[2]
-	gid := os.Args[3]
-	groupId, err = strconv.ParseInt(gid, 10, 32)
+	// check slot can be migrated by key file
+	err = checkKeysFile(keyFileName)
 	if err != nil {
-		usage(os.Args[0])
-		fmt.Printf("groupId must be a int number\n")
-		os.Exit(0)
-	}
-	fmt.Printf("filename [%s],redisAddr[%s],groupId [%d]\n", filename, redisAddr, groupId)
-	e = checkKeysFile(filename)
-	if e != nil {
 		return
 	}
 	printSlotCheckResult()
