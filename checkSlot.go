@@ -256,22 +256,55 @@ func checkKeysFile(filename string) error {
 
 func printSlotCheckResult() {
 	//fmt.Printf("map int bool len:%d\n", len(AllSlots.failflag))
-	for i := 0; i < len(AllSlots.failflag); i++ {
+	var mgrtSlots [1024]int
+	var i int = 0
+	var j int = 0
+
+	for i = 0; i < 1024; i++ {
+		mgrtSlots[i] = -1
+	}
+	for i = 0; i < len(AllSlots.failflag); i++ {
 		if AllSlots.sinfo[i] == int(GroupId) && AllSlots.failflag[i] != true {
 			Slog.Printf("slot [%d] can be migrated", i)
 			fmt.Printf("slot [%d] can be migrated\n", i)
+			mgrtSlots[j] = i
+			j++
 		}
 	}
-	for i := 0; i < len(AllSlots.failflag); i++ {
+	fmt.Printf("can migrate slot index: \nbeg  end\n")
+	var newFlag bool = false
+	for i = 0; i < j; i++ {
+		if i == 0 || i == (j-1) || newFlag == true {
+			if mgrtSlots[i] != -1 {
+				if newFlag == true {
+					fmt.Printf("\n")
+				}
+				fmt.Printf("%04d ", mgrtSlots[i])
+			}
+		} else {
+			if mgrtSlots[i+1]-mgrtSlots[i] > 1 {
+				newFlag = true
+				fmt.Printf("%04d ", mgrtSlots[i])
+			}
+		}
+		if mgrtSlots[i+1]-mgrtSlots[i] == 1 {
+			newFlag = false
+		}
+	}
+	fmt.Printf("\n\n")
+	for i = 0; i < len(AllSlots.failflag); i++ {
 		if AllSlots.sinfo[i] == int(GroupId) && AllSlots.failflag[i] == true {
 			Slog.Printf("slot [%d] can not be migrated", i)
-			fmt.Printf("slot [%d] can not be migrated\n", i)
+			//fmt.Printf("slot [%d] can not be migrated\n", i)
 		}
 	}
 }
 
 func usage(pragramName string) {
 	fmt.Printf("%s keyfile ZkAddr DbName RedisAddr GroupId\n", pragramName)
+	fmt.Printf(" keyfile is a file contains all keys of redis server.you can get it by:\n")
+	fmt.Printf(" /letv/codis/bin/redis-cli -p 6381 keys '*' > 10.98.28.25.keys\n")
+	fmt.Printf("  eg: ./checkSlot 10.98.28.25.keys 10.98.28.5:2181 pusher 10.98.28.26:6381 2\n")
 }
 
 func main() {
