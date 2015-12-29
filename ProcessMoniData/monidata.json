@@ -1,0 +1,13 @@
+{
+    "email_addr":"wangchunyan1@letv.com",
+    "email_pwd":"wlibo666@126",
+    "moni_interval":5,
+    "proxy_list":[
+        {
+            "addr":"10.135.29.168"
+        },
+        {
+            "addr":"10.135.29.171"
+        }
+    ]
+}

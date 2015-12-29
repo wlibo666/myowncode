@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"os"
+	"os/signal"
 	"strconv"
 	"time"
 )
@@ -16,8 +17,8 @@ var (
 
 var pool1 *redis.Pool
 var pool2 *redis.Pool
-var succTimes int = 0
-var failTimes int = 0
+var SuccTimes int = 0
+var FailTimes int = 0
 
 var prefix string = `
 [root@localhost conf]# 2015/12/01 17:51:42 read tcp 10.58.65.240:52433->10.58.65.64:2181: i/o timeout
@@ -37,23 +38,25 @@ func setKeyValue(i int, c redis.Conn) {
 
 	reply, err := c.Do("GET", "key-"+t)
 	if err != nil {
-		fmt.Print("GET key-" + t + " failed.\n")
+		fmt.Print("GET key-" + t + " failed,err:." + err.Error() + " \n")
 		return
 	}
 	if reply == nil {
 		_, err := c.Do("SET", "key-"+t, value)
 		if err != nil {
-			failTimes++
+			FailTimes++
 		} else {
-			succTimes++
+			SuccTimes++
 		}
+	} else {
+		SuccTimes++
 	}
 
 	//time.Sleep(time.Second)
 }
 
 func printResult() {
-	fmt.Printf("suc time %d,fail time %d\n", succTimes, failTimes)
+	fmt.Printf("suc time %d,fail time %d\n", SuccTimes, FailTimes)
 }
 
 func poolInit() *redis.Pool {
@@ -104,14 +107,27 @@ func pool1Init() *redis.Pool {
 func insertData() {
 	pool1 = poolInit()
 	c := pool1.Get()
-	for i := 0; i < 5000000; i++ {
+	for i := 10000000; i < 10500000; i++ {
 		setKeyValue(i, c)
 		if i%5000 == 0 {
-			fmt.Printf("now [%s] insert suc %d times, fail %d times.\n", time.Now().String(), succTimes, failTimes)
+			fmt.Printf("now [%s] insert suc %d times, fail %d times.\n", time.Now().String(), SuccTimes, FailTimes)
 		}
 	}
 	defer c.Close()
 	defer pool1.Close()
+}
+
+func manyConn() {
+	for i := 0; i < 100000; i++ {
+		pool1 = poolInit()
+		c := pool1.Get()
+		setKeyValue(i, c)
+		defer c.Close()
+		defer pool1.Close()
+		if i%5000 == 0 {
+			fmt.Printf("now [%s] suc %d times,fail %d times\n", time.Now().String(), SuccTimes, FailTimes)
+		}
+	}
 }
 
 // 测试迁移时集群是否可用
@@ -131,22 +147,22 @@ func clusIsService() {
 		t := strconv.Itoa(i)
 		reply, err := c.Do("GET", "key-"+t)
 		if err == nil {
-			succTimes++
+			SuccTimes++
 			if reply == nil {
-				fmt.Printf("fail GET key-%s,value[%s]\n", t, reply)
+				fmt.Printf("fail GET key-%s,not found value\n", t)
 			} else {
 				//fmt.Printf("suc GET key-%s,value[%s]\n", t, reply)
 			}
 		} else {
-			failTimes++
+			FailTimes++
 			fmt.Printf("GET key-%s failed,err %s\n", t, err.Error())
 		}
 		var st time.Duration
 		st = time.Second * 30
 		//time.Sleep(st)
 
-		if succTimes%1000 == 0 {
-			fmt.Printf("now get key success times %d,fail times %d\n", succTimes, failTimes)
+		if SuccTimes%1000 == 0 {
+			fmt.Printf("now get key success times %d,fail times %d\n", SuccTimes, FailTimes)
 			fmt.Printf("suc GET key-%s,value[%s]\n", t, reply)
 		}
 		if i%5000 == 0 {
@@ -158,7 +174,7 @@ func clusIsService() {
 	defer c2.Close()
 	defer pool1.Close()
 	defer pool2.Close()
-	fmt.Printf("end get key success times %d,fail times %d\n", succTimes, failTimes)
+	fmt.Printf("end get key success times %d,fail times %d\n", SuccTimes, FailTimes)
 }
 
 func insertHashData() {
@@ -172,11 +188,11 @@ func insertHashData() {
 
 		_, err := c.Do("HSET", keyname, field, value)
 		if err != nil {
-			failTimes++
+			FailTimes++
 			fmt.Printf("HSET %s %s failed,err:%s.\n", keyname, field, err.Error())
 		} else {
 			//fmt.Printf("reply is %v\n", reply)
-			succTimes++
+			SuccTimes++
 		}
 
 		if i%5000 == 0 {
@@ -189,7 +205,7 @@ func insertHashData() {
 
 func usage(program string) {
 	fmt.Printf("%s cmdtype\n", program)
-	fmt.Printf("    cmd{insertData | getData | insertHash}\n")
+	fmt.Printf("    cmd{insertData | getData | insertHash | manyConn}\n")
 }
 
 func main() {
@@ -197,6 +213,13 @@ func main() {
 		usage(os.Args[0])
 		os.Exit(0)
 	}
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		<-c
+		fmt.Printf("succTimes:%d,failTimes:%d\n", SuccTimes, FailTimes)
+		os.Exit(0)
+	}()
 	switch os.Args[1] {
 	case "insertData":
 		insertData()
@@ -204,6 +227,8 @@ func main() {
 		clusIsService()
 	case "insertHash":
 		insertHashData()
+	case "manyConn":
+		manyConn()
 	default:
 		usage(os.Args[0])
 		os.Exit(0)
