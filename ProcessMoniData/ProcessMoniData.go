@@ -2,12 +2,12 @@ package main
 
 import (
 	"encoding/json"
-	//"errors"
+	"errors"
 	"fmt"
 	io "io/ioutil"
 	"net/http"
 	"os"
-	//"strings"
+	"strings"
 	"time"
 )
 
@@ -128,6 +128,97 @@ func PrintMoniData(proxyAddr string, monidata *MoniData) {
 	fmt.Printf("\n\n")
 }
 
+func GetIpAddrByUrl(proxyAddr string) string {
+	index := strings.Index(proxyAddr, "//")
+	if index == -1 {
+		return ""
+	}
+	index += 2
+	end := strings.Index(proxyAddr[index:], ":")
+	if end == -1 {
+		return ""
+	}
+	return proxyAddr[index : index+end]
+}
+
+func SaveLineFile(fileName string, line string) error {
+	file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, os.ModePerm)
+	if err != nil {
+		fmt.Printf("openfile [%s] failed.", fileName)
+		return err
+	}
+	defer file.Close()
+	file.WriteString(line)
+	return nil
+}
+
+func GetRedisIpAddr(redisAddr string) string {
+	index := strings.Index(redisAddr, ":")
+	if index == -1 {
+		return ""
+	}
+	return redisAddr[0:index]
+}
+
+func GetTimeStamp() string {
+	var t time.Time = time.Now()
+	return fmt.Sprintf("%04d-%02d-%02d.%02d:%02d:%02d",
+		t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second())
+}
+
+func SaveMoniData(proxyAddr string, monidata *MoniData) error {
+	var err error
+	// check date
+	CheckDate()
+	// get proxy addr
+	addr := GetIpAddrByUrl(proxyAddr)
+	if len(addr) == 0 {
+		err = errors.New("get ip addr from [" + proxyAddr + "] failed.")
+		fmt.Printf(err.Error())
+		return err
+	}
+	//fmt.Printf("ip addr is :[%s]\n", addr)
+	// save proxy data
+	timeStr := GetTimeStamp()
+	proxyDataFileName := "proxy_" + addr + "." + TodayStr + ".data"
+	linedata := fmt.Sprintf("%s\t%d\t%d\t%d\t%d\t%d\n", timeStr,
+		monidata.ProxyData.ConnNum, monidata.ProxyData.ConnFailNum,
+		monidata.ProxyData.OpNum, monidata.ProxyData.OpFailNum,
+		monidata.ProxyData.OpSuccNum)
+
+	SaveLineFile(proxyDataFileName, linedata)
+	// save proxy cmd
+	proxyCmdFileName := "proxy_" + addr + "." + TodayStr + ".cmd"
+	for _, proxy := range monidata.ProxyData.ProxyCmdInfos {
+		cmddata := fmt.Sprintf("%s\t%s\t%d\t%d\t%d\t%d\t%d\n", timeStr,
+			proxy.Cmd, proxy.Calls, proxy.FailCalls, proxy.FailUsecs,
+			proxy.Usecs, proxy.UsecsPerCall)
+		SaveLineFile(proxyCmdFileName, cmddata)
+	}
+	// save redis data
+	for _, redis := range monidata.ProxyData.RedisCmdInfos {
+		tmpaddr := GetRedisIpAddr(redis.RedisAddr)
+		if len(tmpaddr) == 0 {
+			tmpaddr = redis.RedisAddr
+		}
+		redisDataFileName := "redis_" + tmpaddr + ".data"
+		redisdata := fmt.Sprintf("%s\t%s\t%d\t%d\n", timeStr, addr, redis.Calls, redis.FailCalls)
+		//fmt.Printf("file[%s],data:%s", redisDataFileName, redisdata)
+		SaveLineFile(redisDataFileName, redisdata)
+
+		// save redis cmd
+		redisCmdFileName := "redis_" + tmpaddr + ".cmd"
+		for _, cmd := range redis.CmdInfo {
+			redisCmdData := fmt.Sprintf("%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n", timeStr, addr,
+				cmd.Cmd, cmd.Calls, cmd.FailCalls, cmd.FailUsecs,
+				cmd.Usecs, cmd.UsecsPerCall)
+			//fmt.Printf("file[%s],cmd:%s", redisCmdFileName, redisCmdData)
+			SaveLineFile(redisCmdFileName, redisCmdData)
+		}
+	}
+	return nil
+}
+
 func CollectMoniData(conf *MoniDataConf) error {
 	for {
 		for _, proxy := range conf.ProxyList {
@@ -144,12 +235,16 @@ func CollectMoniData(conf *MoniDataConf) error {
 			if err != nil {
 				fmt.Printf("unmarshal data from add [%s] failed,err:%s.\n", proxy.ProxyAddr, err.Error())
 			}
-			PrintMoniData(proxy.ProxyAddr, monidata)
+			//PrintMoniData(proxy.ProxyAddr, monidata)
+
+			err = SaveMoniData(proxy.ProxyAddr, monidata)
+			if err != nil {
+				continue
+			}
 		}
 		for i := 0; i < conf.MoniInterval; i++ {
 			time.Sleep(time.Second)
 		}
-		break
 	}
 	return nil
 }
@@ -159,8 +254,23 @@ func usage(progName string) {
 	os.Exit(0)
 }
 
+func GetTimeStr(t time.Time) string {
+	return fmt.Sprintf("%d%d%d", t.Year(), t.Month(), t.Day())
+}
+
+func CheckDate() {
+	var NowTime time.Time = time.Now()
+	var tmpStr string = GetTimeStr(NowTime)
+
+	if TodayStr != tmpStr {
+		TodayStr = tmpStr
+	}
+}
+
 var ConfFile string = "monidata.json"
 var GlobalConfig *MoniDataConf = NewConf()
+var TodayTime time.Time = time.Now()
+var TodayStr string = GetTimeStr(TodayTime)
 
 func main() {
 	var argNum int = len(os.Args)
