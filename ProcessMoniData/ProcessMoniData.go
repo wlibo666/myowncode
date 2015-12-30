@@ -201,13 +201,13 @@ func SaveMoniData(proxyAddr string, monidata *MoniData) error {
 		if len(tmpaddr) == 0 {
 			tmpaddr = redis.RedisAddr
 		}
-		redisDataFileName := "redis_" + tmpaddr + ".data"
+		redisDataFileName := "redis_" + tmpaddr + "." + TodayStr + ".data"
 		redisdata := fmt.Sprintf("%s\t%s\t%d\t%d\n", timeStr, addr, redis.Calls, redis.FailCalls)
 		//fmt.Printf("file[%s],data:%s", redisDataFileName, redisdata)
 		SaveLineFile(redisDataFileName, redisdata)
 
 		// save redis cmd
-		redisCmdFileName := "redis_" + tmpaddr + ".cmd"
+		redisCmdFileName := "redis_" + tmpaddr + "." + TodayStr + ".cmd"
 		for _, cmd := range redis.CmdInfo {
 			redisCmdData := fmt.Sprintf("%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n", timeStr, addr,
 				cmd.Cmd, cmd.Calls, cmd.FailCalls, cmd.FailUsecs,
@@ -255,14 +255,57 @@ func usage(progName string) {
 }
 
 func GetTimeStr(t time.Time) string {
-	return fmt.Sprintf("%d%d%d", t.Year(), t.Month(), t.Day())
+	return fmt.Sprintf("%04d%02d%02d", t.Year(), t.Month(), t.Day())
 }
+
+func SendDayReport(conf *MoniDataConf) error {
+	for _, proxy := range conf.ProxyList {
+		fmt.Printf("proxy addr:%s\n", proxy.ProxyAddr)
+		addr := GetIpAddrByUrl(proxy.ProxyAddr)
+		if len(addr) == 0 {
+			fmt.Printf("get ip addr from [%s] failed", proxy.ProxyAddr)
+			continue
+		}
+		// Get Proxy day data
+		proxyDataFileName := "proxy_" + addr + "." + PreTimeFalg + ".data"
+		proxyDataNode := GetProxyDayData(proxyDataFileName, conf.MoniInterval)
+		if proxyDataNode == nil {
+			continue
+		}
+		/*fmt.Printf("interval:%d\n", proxyDataNode.TimeInterval)
+		fmt.Printf("ConnNum:%d\n", proxyDataNode.ConnNum)
+		fmt.Printf("ConnFailNum:%d\n", proxyDataNode.ConnFailNum)
+		fmt.Printf("OpNum:%d\n", proxyDataNode.OpNum)
+		fmt.Printf("OpFailNum:%d\n", proxyDataNode.OpFailNum)
+		fmt.Printf("OpSuccNum:%d\n", proxyDataNode.OpSuccNum)*/
+
+		// Get Proxy day cmd
+		proxyCmdFileName := "proxy_" + addr + "." + PreTimeFalg + ".cmd"
+		proxyCmdMap := GetProxyDayCmd(proxyCmdFileName, conf.MoniInterval)
+		if proxyCmdMap == nil {
+			continue
+		}
+		fmt.Printf("Now Print CmdMap\n")
+		PrintCmdMap(proxyCmdMap)
+
+	}
+	return nil
+}
+
+var PreTimeFalg string = ""
 
 func CheckDate() {
 	var NowTime time.Time = time.Now()
 	var tmpStr string = GetTimeStr(NowTime)
 
 	if TodayStr != tmpStr {
+		PreTimeFalg = tmpStr
+		go func() {
+			err := SendDayReport(GlobalConfig)
+			if err != nil {
+				fmt.Printf("send report failed,err:%s\n", err.Error())
+			}
+		}()
 		TodayStr = tmpStr
 	}
 }
@@ -271,6 +314,14 @@ var ConfFile string = "monidata.json"
 var GlobalConfig *MoniDataConf = NewConf()
 var TodayTime time.Time = time.Now()
 var TodayStr string = GetTimeStr(TodayTime)
+
+func TestSendReport() {
+	for i := 0; i < 5; i++ {
+		time.Sleep(time.Second)
+	}
+	PreTimeFalg = "20151230"
+	SendDayReport(GlobalConfig)
+}
 
 func main() {
 	var argNum int = len(os.Args)
@@ -287,14 +338,14 @@ func main() {
 	}
 	//PrintConf(GlobalConfig)
 	// get monitor data
-	go func() {
+	/*go func() {
 		err := CollectMoniData(GlobalConfig)
 		if err != nil {
 			fmt.Printf("CollectMoniData failed,err:%s\n", err.Error())
 			os.Exit(2)
 		}
-	}()
-
+	}()*/
+	TestSendReport()
 	for {
 		time.Sleep(time.Second)
 	}

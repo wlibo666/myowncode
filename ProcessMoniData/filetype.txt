@@ -1,7 +1,7 @@
-proxy_ipaddr.date.cmd
+proxy_ipaddr.date.data
 timestamp conn_num conn_fail_num op_num op_fail_num op_succ_num
 
-proxy_ipaddr.date.data
+proxy_ipaddr.date.cmd
 timestamp cmd calls fail_calls fail_usecs usecs usecs_per_call
 
 redis_ipaddr.date.cmd
