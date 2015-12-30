@@ -81,6 +81,14 @@ type RouterInfo struct {
 	OpSuccNum     int64          `json:"op_succ_num"`
 }
 
+type RedisAddrMap struct {
+	RedisAddr map[string]bool
+}
+
+var AllRedisAddr RedisAddrMap = RedisAddrMap{
+	RedisAddr: make(map[string]bool),
+}
+
 type MoniData struct {
 	ProxyData RouterInfo `json:"router"`
 }
@@ -142,6 +150,7 @@ func GetIpAddrByUrl(proxyAddr string) string {
 }
 
 func SaveLineFile(fileName string, line string) error {
+	return nil
 	file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, os.ModePerm)
 	if err != nil {
 		fmt.Printf("openfile [%s] failed.", fileName)
@@ -197,6 +206,8 @@ func SaveMoniData(proxyAddr string, monidata *MoniData) error {
 	}
 	// save redis data
 	for _, redis := range monidata.ProxyData.RedisCmdInfos {
+		// record all redis addr
+		AllRedisAddr.RedisAddr[redis.RedisAddr] = true
 		tmpaddr := GetRedisIpAddr(redis.RedisAddr)
 		if len(tmpaddr) == 0 {
 			tmpaddr = redis.RedisAddr
@@ -234,6 +245,7 @@ func CollectMoniData(conf *MoniDataConf) error {
 			err = json.Unmarshal([]byte(data), &monidata)
 			if err != nil {
 				fmt.Printf("unmarshal data from add [%s] failed,err:%s.\n", proxy.ProxyAddr, err.Error())
+				continue
 			}
 			//PrintMoniData(proxy.ProxyAddr, monidata)
 
@@ -260,7 +272,7 @@ func GetTimeStr(t time.Time) string {
 
 func SendDayReport(conf *MoniDataConf) error {
 	for _, proxy := range conf.ProxyList {
-		fmt.Printf("proxy addr:%s\n", proxy.ProxyAddr)
+		//fmt.Printf("proxy addr:%s\n", proxy.ProxyAddr)
 		addr := GetIpAddrByUrl(proxy.ProxyAddr)
 		if len(addr) == 0 {
 			fmt.Printf("get ip addr from [%s] failed", proxy.ProxyAddr)
@@ -285,9 +297,31 @@ func SendDayReport(conf *MoniDataConf) error {
 		if proxyCmdMap == nil {
 			continue
 		}
-		fmt.Printf("Now Print CmdMap\n")
-		PrintCmdMap(proxyCmdMap)
+		//fmt.Printf("Now Print CmdMap\n")
+		//PrintProxyCmdMap(proxyCmdMap)
+	}
 
+	for redisAddr, _ := range AllRedisAddr.RedisAddr {
+		tmpaddr := GetRedisIpAddr(redisAddr)
+		if len(tmpaddr) == 0 {
+			tmpaddr = redisAddr
+		}
+		// Get redis day data
+		redisDataFileName := "redis_" + tmpaddr + "." + PreTimeFalg + ".data"
+		redisDataMap := GetRedisDayData(redisDataFileName, conf.MoniInterval)
+		if redisDataMap == nil {
+			continue
+		}
+		//PrintRedisDataMap(redisDataMap)
+
+		// Get redis day cmd
+		redisCmdFileName := "redis_" + tmpaddr + "." + PreTimeFalg + ".cmd"
+		redisCmdMap := GetRedisDayCmd(redisCmdFileName, conf.MoniInterval)
+		if redisCmdMap == nil {
+			continue
+		}
+		fmt.Printf("redis addr[%s]\n", redisAddr)
+		PrintRedisCmdMap(redisCmdMap)
 	}
 	return nil
 }
@@ -316,7 +350,7 @@ var TodayTime time.Time = time.Now()
 var TodayStr string = GetTimeStr(TodayTime)
 
 func TestSendReport() {
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 20; i++ {
 		time.Sleep(time.Second)
 	}
 	PreTimeFalg = "20151230"
@@ -338,13 +372,13 @@ func main() {
 	}
 	//PrintConf(GlobalConfig)
 	// get monitor data
-	/*go func() {
+	go func() {
 		err := CollectMoniData(GlobalConfig)
 		if err != nil {
 			fmt.Printf("CollectMoniData failed,err:%s\n", err.Error())
 			os.Exit(2)
 		}
-	}()*/
+	}()
 	TestSendReport()
 	for {
 		time.Sleep(time.Second)

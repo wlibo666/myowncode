@@ -26,18 +26,69 @@ type ProxyPerDataNode struct {
 type ProxyPerCmdNode struct {
 	StartTime    string
 	Cmd          string
-	Calls        int
-	FailCalls    int
-	FailUsecs    int
-	Usecs        int
-	UsecsPerCall int
+	Calls        int64
+	FailCalls    int64
+	FailUsecs    int64
+	Usecs        int64
+	UsecsPerCall int64
 }
 
-type CmdMap struct {
+type ProxyCmdMap struct {
 	TimeInterval int
 	StartTime    string
 	EndTime      string
+	Calls        int64
+	FailCalls    int64
+	FailUsecs    int64
+	Usecs        int64
 	Cmds         map[string]*ProxyPerCmdNode
+}
+
+type RedisPerDataNode struct {
+	StartTime string
+	ProxyAddr string
+	Calls     int64
+	FailCalls int64
+}
+
+type RedisDataMap struct {
+	TimeInterval int
+	StartTime    string
+	EndTime      string
+	Calls        int64
+	FailCalls    int64
+	Datas        map[string]*RedisPerDataNode
+}
+
+type RedisPerCmdNode struct {
+	StartTime    string
+	ProxyAddr    string
+	Cmd          string
+	Calls        int64
+	FailCalls    int64
+	FailUsecs    int64
+	Usecs        int64
+	UsecsPerCall int64
+}
+
+type RedisCmdProxy struct {
+	ProxyAddr string
+	Calls     int64
+	FailCalls int64
+	FailUsecs int64
+	Usecs     int64
+	Cmds      map[string]*RedisPerCmdNode
+}
+
+type RedisCmdMap struct {
+	TimeInterval int
+	StartTime    string
+	EndTime      string
+	Calls        int64
+	FailCalls    int64
+	FailUsecs    int64
+	Usecs        int64
+	Proxys       map[string]*RedisCmdProxy
 }
 
 func GetProxyDayData(proxyDataFile string, interval int) *ProxyPerDataNode {
@@ -99,11 +150,15 @@ func GetProxyDayData(proxyDataFile string, interval int) *ProxyPerDataNode {
 	return returnNode
 }
 
-func PrintCmdMap(cmds *CmdMap) {
-	fmt.Printf("--------------------------------\n")
+func PrintProxyCmdMap(cmds *ProxyCmdMap) {
+	fmt.Printf("-----------------Proxy Cmd Map---------------\n")
 	fmt.Printf("TimeInterval:%d\n", cmds.TimeInterval)
 	fmt.Printf("StartTime:%s\n", cmds.StartTime)
 	fmt.Printf("EndTime:%s\n", cmds.EndTime)
+	fmt.Printf("all Calls:%d\n", cmds.Calls)
+	fmt.Printf("all FailCalls:%d\n", cmds.FailCalls)
+	fmt.Printf("all FailUsecs:%d\n", cmds.FailUsecs)
+	fmt.Printf("all Usecs:%d\n\n", cmds.Usecs)
 	for key, node := range cmds.Cmds {
 		fmt.Printf("key:%s\n", key)
 		fmt.Printf("StartTime:%s\n", node.StartTime)
@@ -116,7 +171,7 @@ func PrintCmdMap(cmds *CmdMap) {
 	}
 }
 
-func GetProxyDayCmd(proxyCmdFile string, interval int) *CmdMap {
+func GetProxyDayCmd(proxyCmdFile string, interval int) *ProxyCmdMap {
 	file, err := os.OpenFile(proxyCmdFile, os.O_RDONLY, os.ModePerm)
 	if err != nil {
 		fmt.Printf("open file [%s] failed,err:%s\n", proxyCmdFile, err.Error())
@@ -125,9 +180,9 @@ func GetProxyDayCmd(proxyCmdFile string, interval int) *CmdMap {
 	defer file.Close()
 	var firstLine string
 	var lastLine string
-	var firstNode CmdMap = CmdMap{Cmds: make(map[string]*ProxyPerCmdNode)}
-	var lastNode CmdMap = CmdMap{Cmds: make(map[string]*ProxyPerCmdNode)}
-	var returnNode *CmdMap
+	var firstNode ProxyCmdMap = ProxyCmdMap{Cmds: make(map[string]*ProxyPerCmdNode)}
+	var lastNode ProxyCmdMap = ProxyCmdMap{Cmds: make(map[string]*ProxyPerCmdNode)}
+	var returnNode *ProxyCmdMap
 	var flag bool = false
 	var firstFlag bool = false
 	var firstTimeStr string
@@ -171,7 +226,7 @@ func GetProxyDayCmd(proxyCmdFile string, interval int) *CmdMap {
 		fmt.Printf("Sscanf [%s] failed,err:%s\n", lastLine, err2.Error())
 		return nil
 	}
-	//PrintCmdMap(&firstNode)
+	//PrintProxyCmdMap(&firstNode)
 	// Get last all cmds
 	file.Seek(0, os.SEEK_SET)
 	//fmt.Printf("now read last node\n")
@@ -195,9 +250,9 @@ func GetProxyDayCmd(proxyCmdFile string, interval int) *CmdMap {
 		}
 
 	}
-	//PrintCmdMap(&lastNode)
+	//PrintProxyCmdMap(&lastNode)
 	// calc oneday's cmds
-	returnNode = &CmdMap{
+	returnNode = &ProxyCmdMap{
 		TimeInterval: interval,
 		StartTime:    firstTimeStr,
 		EndTime:      lastTimeStr,
@@ -220,7 +275,308 @@ func GetProxyDayCmd(proxyCmdFile string, interval int) *CmdMap {
 			tmpNode.FailUsecs = node.FailUsecs
 		}
 		returnNode.Cmds[key] = tmpNode
+		returnNode.Calls += tmpNode.Calls
+		returnNode.FailCalls += tmpNode.FailCalls
+		returnNode.Usecs += tmpNode.Usecs
+		returnNode.FailUsecs += tmpBaseNode.FailUsecs
 	}
 
+	return returnNode
+}
+
+func PrintRedisDataMap(dataMap *RedisDataMap) {
+	fmt.Printf("-------------- RedisDataMap ------------------\n")
+	fmt.Printf("TimeInterval:%d\n", dataMap.TimeInterval)
+	fmt.Printf("StartTime:%s\n", dataMap.StartTime)
+	fmt.Printf("EndTime:%s\n", dataMap.EndTime)
+	fmt.Printf("all Calls:%d\n", dataMap.Calls)
+	fmt.Printf("all FailCalls:%d\n\n", dataMap.FailCalls)
+	for key, node := range dataMap.Datas {
+		fmt.Printf("key:%s\n", key)
+		fmt.Printf("StartTime:%s\n", node.StartTime)
+		fmt.Printf("ProxyAddr:%s\n", node.ProxyAddr)
+		fmt.Printf("Calls:%d\n", node.Calls)
+		fmt.Printf("FailCalls:%d\n\n", node.FailCalls)
+	}
+}
+
+func GetRedisDayData(redisDataFile string, interval int) *RedisDataMap {
+	file, err := os.OpenFile(redisDataFile, os.O_RDONLY, os.ModePerm)
+	if err != nil {
+		fmt.Printf("open file [%s] failed,err:%s\n", redisDataFile, err.Error())
+		return nil
+	}
+	defer file.Close()
+
+	var firstLine string
+	var lastLine string
+	var firstNode RedisDataMap = RedisDataMap{Datas: make(map[string]*RedisPerDataNode)}
+	var lastNode RedisDataMap = RedisDataMap{Datas: make(map[string]*RedisPerDataNode)}
+	var returnNode *RedisDataMap
+	var flag bool = false
+	var firstFlag bool = false
+	var firstTimeStr string
+	rd := bufio.NewReader(file)
+	// Get first all data
+	for {
+		lineData, err := rd.ReadString('\n')
+		if err != nil || err == io.EOF {
+			break
+		}
+		if flag == false {
+			firstLine = lineData
+			// parse firstLine
+			tmpNode := &RedisPerDataNode{}
+			n1, err1 := fmt.Sscanf(firstLine, "%s\t%s\t%d\t%d\n",
+				&tmpNode.StartTime, &tmpNode.ProxyAddr,
+				&tmpNode.Calls, &tmpNode.FailCalls)
+			if n1 != 4 {
+				fmt.Printf("sscanf form [%s] failed,err:%s\n", firstLine, err1.Error())
+				continue
+			}
+			if firstFlag == false {
+				firstTimeStr = tmpNode.StartTime
+				firstFlag = true
+			}
+			if strings.Contains(lineData, firstTimeStr) == false {
+				flag = true
+			} else {
+				//fmt.Printf("firstLine:%s\n", lineData)
+				firstNode.Datas[tmpNode.ProxyAddr] = tmpNode
+			}
+		} else {
+			lastLine = lineData
+		}
+	}
+	//fmt.Printf("lastLine is:%s\n", lastLine)
+	var lastTimeStr string
+	n2, err2 := fmt.Sscanf(lastLine, "%s\t%*s\t%*s\t%*s\n", &lastTimeStr)
+	if n2 != 1 {
+		fmt.Printf("Sscanf [%s] failed,err:%s\n", lastLine, err2.Error())
+		return nil
+	}
+	// Get last all data
+	file.Seek(0, os.SEEK_SET)
+	rd = bufio.NewReader(file)
+	for {
+		lineData, err := rd.ReadString('\n')
+		if err != nil || err == io.EOF {
+			break
+		}
+		if strings.Contains(lineData, lastTimeStr) {
+			tmpNode := &RedisPerDataNode{}
+			n3, err3 := fmt.Sscanf(lineData, "%s\t%s\t%d\t%d\n",
+				&tmpNode.StartTime, &tmpNode.ProxyAddr,
+				&tmpNode.Calls, &tmpNode.FailCalls)
+			if n3 != 4 {
+				fmt.Printf("sscanf form [%s] failed,err:%s\n", lineData, err3.Error())
+				continue
+			}
+			lastNode.Datas[tmpNode.ProxyAddr] = tmpNode
+		}
+
+	}
+	// calc oneday's data
+	returnNode = &RedisDataMap{
+		TimeInterval: interval,
+		StartTime:    firstTimeStr,
+		EndTime:      lastTimeStr,
+		Datas:        make(map[string]*RedisPerDataNode),
+	}
+	for key, node := range lastNode.Datas {
+		tmpNode := &RedisPerDataNode{
+			ProxyAddr: key,
+		}
+		tmpBaseNode := firstNode.Datas[key]
+		if tmpBaseNode != nil {
+			tmpNode.Calls = node.Calls - tmpBaseNode.Calls
+			tmpNode.FailCalls = node.FailCalls - tmpBaseNode.FailCalls
+		} else {
+			tmpNode.Calls = node.Calls
+			tmpNode.FailCalls = node.FailCalls
+		}
+		returnNode.Datas[key] = tmpNode
+		returnNode.Calls += tmpNode.Calls
+		returnNode.FailCalls += tmpNode.FailCalls
+	}
+	//PrintRedisDataMap(returnNode)
+	return returnNode
+}
+
+func PrintRedisCmdMap(cmd *RedisCmdMap) {
+	fmt.Printf("-------------Begin Redis Cmd Map-------------\n")
+	fmt.Printf("TimeInterval:%d\n", cmd.TimeInterval)
+	fmt.Printf("StartTime:%s\n", cmd.StartTime)
+	fmt.Printf("EndTime:%s\n", cmd.EndTime)
+	fmt.Printf("Calls:%d\n", cmd.Calls)
+	fmt.Printf("FailCalls:%d\n", cmd.FailCalls)
+	fmt.Printf("Usecs:%d\n", cmd.Usecs)
+	fmt.Printf("FailUsecs:%d\n\n", cmd.FailUsecs)
+
+	for proxyaddr, proxy := range cmd.Proxys {
+		fmt.Printf("\tproxyaddr:%s\n", proxyaddr)
+		fmt.Printf("\tProxyAddr:%s\n", proxy.ProxyAddr)
+		fmt.Printf("\tCalls:%d\n", cmd.Calls)
+		fmt.Printf("\tFailCalls:%d\n", cmd.FailCalls)
+		fmt.Printf("\tUsecs:%d\n", cmd.Usecs)
+		fmt.Printf("\tFailUsecs:%d\n\n", cmd.FailUsecs)
+
+		for _, data := range proxy.Cmds {
+			fmt.Printf("\t\tProxyAddr:%s\n", data.ProxyAddr)
+			fmt.Printf("\t\tCmd:%s\n", data.Cmd)
+			fmt.Printf("\t\tCalls:%d\n", data.Calls)
+			fmt.Printf("\t\tFailCalls:%d\n", data.FailCalls)
+			fmt.Printf("\t\tUsecs:%d\n", data.Usecs)
+			fmt.Printf("\t\tFailUsecs:%d\n\n", data.FailUsecs)
+		}
+	}
+	fmt.Printf("-------------End Redis Cmd Map-------------\n")
+}
+
+func GetRedisDayCmd(redisCmdFile string, interval int) *RedisCmdMap {
+	file, err := os.OpenFile(redisCmdFile, os.O_RDONLY, os.ModePerm)
+	if err != nil {
+		fmt.Printf("open file [%s] failed,err:%s\n", redisCmdFile, err.Error())
+		return nil
+	}
+	defer file.Close()
+
+	var firstLine string
+	var lastLine string
+	var firstNode RedisCmdMap = RedisCmdMap{Proxys: make(map[string]*RedisCmdProxy)}
+	var lastNode RedisCmdMap = RedisCmdMap{Proxys: make(map[string]*RedisCmdProxy)}
+	var returnNode *RedisCmdMap
+	var flag bool = false
+	var firstFlag bool = false
+	var firstTimeStr string
+	rd := bufio.NewReader(file)
+	// Get first all data
+	for {
+		lineData, err := rd.ReadString('\n')
+		if err != nil || err == io.EOF {
+			break
+		}
+		if flag == false {
+			firstLine = lineData
+			// parse firstLine
+			tmpNode := &RedisPerCmdNode{}
+			n1, err1 := fmt.Sscanf(firstLine, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n",
+				&tmpNode.StartTime, &tmpNode.ProxyAddr, &tmpNode.Cmd, &tmpNode.Calls,
+				&tmpNode.FailCalls, &tmpNode.FailUsecs, &tmpNode.Usecs, &tmpNode.UsecsPerCall)
+			if n1 != 8 {
+				fmt.Printf("sscanf form [%s] failed,err:%s\n", firstLine, err1.Error())
+				continue
+			}
+			if firstFlag == false {
+				firstTimeStr = tmpNode.StartTime
+				firstFlag = true
+			}
+			if strings.Contains(lineData, firstTimeStr) == false {
+				flag = true
+			} else {
+				//fmt.Printf("firstLine:%s\n", lineData)
+				CmdProxy := firstNode.Proxys[tmpNode.ProxyAddr]
+				if CmdProxy == nil {
+					CmdProxy := &RedisCmdProxy{ProxyAddr: tmpNode.ProxyAddr, Cmds: make(map[string]*RedisPerCmdNode)}
+					firstNode.Proxys[tmpNode.ProxyAddr] = CmdProxy
+					CmdProxy.Cmds[tmpNode.Cmd] = tmpNode
+				} else {
+					CmdProxy.Cmds[tmpNode.Cmd] = tmpNode
+				}
+			}
+		} else {
+			lastLine = lineData
+		}
+	}
+	//fmt.Printf("lastLine is:%s\n", lastLine)
+	var lastTimeStr string
+	n2, err2 := fmt.Sscanf(lastLine, "%s\t%*s\t%*s\t%*s\t%*s\t%*s\t%*s\t%*s\n", &lastTimeStr)
+	if n2 != 1 {
+		fmt.Printf("Sscanf [%s] failed,err:%s\n", lastLine, err2.Error())
+		return nil
+	}
+	// Get last all data
+	file.Seek(0, os.SEEK_SET)
+	rd = bufio.NewReader(file)
+	for {
+		lineData, err := rd.ReadString('\n')
+		if err != nil || err == io.EOF {
+			break
+		}
+		if strings.Contains(lineData, lastTimeStr) {
+			tmpNode := &RedisPerCmdNode{}
+			n3, err3 := fmt.Sscanf(lineData, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n",
+				&tmpNode.StartTime, &tmpNode.ProxyAddr, &tmpNode.Cmd, &tmpNode.Calls,
+				&tmpNode.FailCalls, &tmpNode.FailUsecs, &tmpNode.Usecs, &tmpNode.UsecsPerCall)
+			if n3 != 8 {
+				fmt.Printf("sscanf form [%s] failed,err:%s\n", lineData, err3.Error())
+				continue
+			}
+			CmdProxy := lastNode.Proxys[tmpNode.ProxyAddr]
+			if CmdProxy == nil {
+				CmdProxy := &RedisCmdProxy{ProxyAddr: tmpNode.ProxyAddr, Cmds: make(map[string]*RedisPerCmdNode)}
+				lastNode.Proxys[tmpNode.ProxyAddr] = CmdProxy
+				CmdProxy.Cmds[tmpNode.Cmd] = tmpNode
+			} else {
+				CmdProxy.Cmds[tmpNode.Cmd] = tmpNode
+			}
+		}
+
+	}
+	// calc oneday's data
+	returnNode = &RedisCmdMap{
+		TimeInterval: interval,
+		StartTime:    firstTimeStr,
+		EndTime:      lastTimeStr,
+		Proxys:       make(map[string]*RedisCmdProxy),
+	}
+	for proxyaddr, proxy := range lastNode.Proxys {
+		tmpProxy := returnNode.Proxys[proxyaddr]
+		if tmpProxy == nil {
+			tmpProxy = &RedisCmdProxy{ProxyAddr: proxyaddr, Cmds: make(map[string]*RedisPerCmdNode)}
+			returnNode.Proxys[proxyaddr] = tmpProxy
+		}
+
+		for cmd, data := range proxy.Cmds {
+			tmpNode := tmpProxy.Cmds[cmd]
+			if tmpNode == nil {
+				tmpNode = &RedisPerCmdNode{ProxyAddr: proxyaddr, Cmd: cmd}
+				tmpProxy.Cmds[cmd] = tmpNode
+			}
+			tmpBaseProxy := firstNode.Proxys[proxyaddr]
+			if tmpBaseProxy == nil {
+				tmpNode.Calls = data.Calls
+				tmpNode.FailCalls = data.FailCalls
+				tmpNode.Usecs = data.Usecs
+				tmpNode.FailCalls = data.FailCalls
+
+				tmpProxy.Calls += data.Calls
+				tmpProxy.FailCalls += data.FailCalls
+				tmpProxy.Usecs += data.Usecs
+				tmpProxy.FailUsecs += data.FailUsecs
+			} else {
+				tmpBaseCmd := tmpBaseProxy.Cmds[cmd]
+				if tmpBaseCmd == nil {
+					tmpNode.Calls = data.Calls
+					tmpNode.FailCalls = data.FailCalls
+					tmpNode.Usecs = data.Usecs
+					tmpNode.FailCalls = data.FailCalls
+				} else {
+					tmpNode.Calls = data.Calls - tmpBaseCmd.Calls
+					tmpNode.FailCalls = data.FailCalls - tmpBaseCmd.FailCalls
+					tmpNode.Usecs = data.Usecs - tmpBaseCmd.Usecs
+					tmpNode.FailUsecs = data.FailUsecs - tmpBaseCmd.FailUsecs
+				}
+				tmpProxy.Calls += tmpNode.Calls
+				tmpProxy.FailCalls += tmpNode.FailCalls
+				tmpProxy.Usecs += tmpNode.Usecs
+				tmpProxy.FailUsecs += tmpNode.FailUsecs
+			}
+		}
+		returnNode.Calls += tmpProxy.Calls
+		returnNode.FailCalls += tmpProxy.FailCalls
+		returnNode.Usecs += tmpProxy.Usecs
+		returnNode.FailUsecs += tmpProxy.FailUsecs
+	}
 	return returnNode
 }
