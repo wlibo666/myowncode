@@ -94,7 +94,7 @@ type RedisCmdMap struct {
 func GetProxyDayData(proxyDataFile string, interval int) *ProxyPerDataNode {
 	file, err := os.OpenFile(proxyDataFile, os.O_RDONLY, os.ModePerm)
 	if err != nil {
-		fmt.Printf("open file [%s] failed,err:%s\n", proxyDataFile, err.Error())
+		GLogger.Printf("open file [%s] failed,err:%s\n", proxyDataFile, err.Error())
 		return nil
 	}
 	defer file.Close()
@@ -118,23 +118,23 @@ func GetProxyDayData(proxyDataFile string, interval int) *ProxyPerDataNode {
 			lastLine = lineData
 		}
 	}
-	//fmt.Printf("firstLine:%s", firstLine)
+	//GLogger.Printf("firstLine:%s", firstLine)
 	n1, err1 := fmt.Sscanf(firstLine, "%s\t%d\t%d\t%d\t%d\t%d\n",
 		&firstNode.StartTime, &firstNode.ConnNum, &firstNode.ConnFailNum,
 		&firstNode.OpNum, &firstNode.OpFailNum, &firstNode.OpSuccNum)
 	if n1 != 6 {
-		fmt.Printf("format from :[%s] failed, err:%s\n", firstLine, err1.Error())
+		GLogger.Printf("format from :[%s] failed, err:%s\n", firstLine, err1.Error())
 		return nil
 	}
-	/*fmt.Printf("time:%s,ConnNum:%d,ConnFailNum:%d,OpNum:%d,OpFailNum:%d,OpSuccNum:%d\n",
+	/*GLogger.Printf("time:%s,ConnNum:%d,ConnFailNum:%d,OpNum:%d,OpFailNum:%d,OpSuccNum:%d\n",
 		firstNode.StartTime, firstNode.ConnNum, firstNode.ConnFailNum,
 		firstNode.OpNum, firstNode.OpFailNum, firstNode.OpSuccNum)
-	fmt.Printf("lastLine:%s", lastLine)*/
+	GLogger.Printf("lastLine:%s", lastLine)*/
 	n2, err2 := fmt.Sscanf(lastLine, "%s\t%d\t%d\t%d\t%d\t%d\n",
 		&lastNode.StartTime, &lastNode.ConnNum, &lastNode.ConnFailNum,
 		&lastNode.OpNum, &lastNode.OpFailNum, &lastNode.OpSuccNum)
 	if n2 != 6 {
-		fmt.Printf("format from :[%s] failed, err:%s\n", lastLine, err2.Error())
+		GLogger.Printf("format from :[%s] failed, err:%s\n", lastLine, err2.Error())
 		return nil
 	}
 	returnNode = &ProxyPerDataNode{
@@ -151,30 +151,30 @@ func GetProxyDayData(proxyDataFile string, interval int) *ProxyPerDataNode {
 }
 
 func PrintProxyCmdMap(cmds *ProxyCmdMap) {
-	fmt.Printf("-----------------Proxy Cmd Map---------------\n")
-	fmt.Printf("TimeInterval:%d\n", cmds.TimeInterval)
-	fmt.Printf("StartTime:%s\n", cmds.StartTime)
-	fmt.Printf("EndTime:%s\n", cmds.EndTime)
-	fmt.Printf("all Calls:%d\n", cmds.Calls)
-	fmt.Printf("all FailCalls:%d\n", cmds.FailCalls)
-	fmt.Printf("all FailUsecs:%d\n", cmds.FailUsecs)
-	fmt.Printf("all Usecs:%d\n\n", cmds.Usecs)
+	GLogger.Printf("-----------------Proxy Cmd Map---------------\n")
+	GLogger.Printf("TimeInterval:%d\n", cmds.TimeInterval)
+	GLogger.Printf("StartTime:%s\n", cmds.StartTime)
+	GLogger.Printf("EndTime:%s\n", cmds.EndTime)
+	GLogger.Printf("all Calls:%d\n", cmds.Calls)
+	GLogger.Printf("all FailCalls:%d\n", cmds.FailCalls)
+	GLogger.Printf("all FailUsecs:%d\n", cmds.FailUsecs)
+	GLogger.Printf("all Usecs:%d\n\n", cmds.Usecs)
 	for key, node := range cmds.Cmds {
-		fmt.Printf("key:%s\n", key)
-		fmt.Printf("StartTime:%s\n", node.StartTime)
-		fmt.Printf("Cmd:%s\n", node.Cmd)
-		fmt.Printf("Calls:%d\n", node.Calls)
-		fmt.Printf("FailCalls:%d\n", node.FailCalls)
-		fmt.Printf("FailUsecs:%d\n", node.FailUsecs)
-		fmt.Printf("Usecs:%d\n", node.Usecs)
-		fmt.Printf("UsecsPerCall:%d\n\n", node.UsecsPerCall)
+		GLogger.Printf("key:%s\n", key)
+		GLogger.Printf("StartTime:%s\n", node.StartTime)
+		GLogger.Printf("Cmd:%s\n", node.Cmd)
+		GLogger.Printf("Calls:%d\n", node.Calls)
+		GLogger.Printf("FailCalls:%d\n", node.FailCalls)
+		GLogger.Printf("FailUsecs:%d\n", node.FailUsecs)
+		GLogger.Printf("Usecs:%d\n", node.Usecs)
+		GLogger.Printf("UsecsPerCall:%d\n\n", node.UsecsPerCall)
 	}
 }
 
 func GetProxyDayCmd(proxyCmdFile string, interval int) *ProxyCmdMap {
 	file, err := os.OpenFile(proxyCmdFile, os.O_RDONLY, os.ModePerm)
 	if err != nil {
-		fmt.Printf("open file [%s] failed,err:%s\n", proxyCmdFile, err.Error())
+		GLogger.Printf("open file [%s] failed,err:%s\n", proxyCmdFile, err.Error())
 		return nil
 	}
 	defer file.Close()
@@ -202,7 +202,7 @@ func GetProxyDayCmd(proxyCmdFile string, interval int) *ProxyCmdMap {
 				&tmpNode.FailCalls, &tmpNode.FailUsecs,
 				&tmpNode.Usecs, &tmpNode.UsecsPerCall)
 			if n1 != 7 {
-				fmt.Printf("sscanf form [%s] failed,err:%s\n", firstLine, err1.Error())
+				GLogger.Printf("sscanf form [%s] failed,err:%s\n", firstLine, err1.Error())
 				continue
 			}
 			if firstFlag == false {
@@ -212,24 +212,24 @@ func GetProxyDayCmd(proxyCmdFile string, interval int) *ProxyCmdMap {
 			if strings.Contains(lineData, firstTimeStr) == false {
 				flag = true
 			} else {
-				//fmt.Printf("firstLine:%s\n", lineData)
+				//GLogger.Printf("firstLine:%s\n", lineData)
 				firstNode.Cmds[tmpNode.Cmd] = tmpNode
 			}
 		} else {
 			lastLine = lineData
 		}
 	}
-	//fmt.Printf("lastLine is:%s\n", lastLine)
+	//GLogger.Printf("lastLine is:%s\n", lastLine)
 	var lastTimeStr string
 	n2, err2 := fmt.Sscanf(lastLine, "%s\t%*s\t%*s\t%*s\t%*s\t%*s\t%*s\n", &lastTimeStr)
 	if n2 != 1 {
-		fmt.Printf("Sscanf [%s] failed,err:%s\n", lastLine, err2.Error())
+		GLogger.Printf("Sscanf [%s] failed,err:%s\n", lastLine, err2.Error())
 		return nil
 	}
 	//PrintProxyCmdMap(&firstNode)
 	// Get last all cmds
 	file.Seek(0, os.SEEK_SET)
-	//fmt.Printf("now read last node\n")
+	//GLogger.Printf("now read last node\n")
 	rd = bufio.NewReader(file)
 	for {
 		lineData, err := rd.ReadString('\n')
@@ -243,7 +243,7 @@ func GetProxyDayCmd(proxyCmdFile string, interval int) *ProxyCmdMap {
 				&tmpNode.FailCalls, &tmpNode.FailUsecs,
 				&tmpNode.Usecs, &tmpNode.UsecsPerCall)
 			if n3 != 7 {
-				fmt.Printf("sscanf form [%s] failed,err:%s\n", lineData, err3.Error())
+				GLogger.Printf("sscanf form [%s] failed,err:%s\n", lineData, err3.Error())
 				continue
 			}
 			lastNode.Cmds[tmpNode.Cmd] = tmpNode
@@ -285,25 +285,25 @@ func GetProxyDayCmd(proxyCmdFile string, interval int) *ProxyCmdMap {
 }
 
 func PrintRedisDataMap(dataMap *RedisDataMap) {
-	fmt.Printf("-------------- RedisDataMap ------------------\n")
-	fmt.Printf("TimeInterval:%d\n", dataMap.TimeInterval)
-	fmt.Printf("StartTime:%s\n", dataMap.StartTime)
-	fmt.Printf("EndTime:%s\n", dataMap.EndTime)
-	fmt.Printf("all Calls:%d\n", dataMap.Calls)
-	fmt.Printf("all FailCalls:%d\n\n", dataMap.FailCalls)
+	GLogger.Printf("-------------- RedisDataMap ------------------\n")
+	GLogger.Printf("TimeInterval:%d\n", dataMap.TimeInterval)
+	GLogger.Printf("StartTime:%s\n", dataMap.StartTime)
+	GLogger.Printf("EndTime:%s\n", dataMap.EndTime)
+	GLogger.Printf("all Calls:%d\n", dataMap.Calls)
+	GLogger.Printf("all FailCalls:%d\n\n", dataMap.FailCalls)
 	for key, node := range dataMap.Datas {
-		fmt.Printf("key:%s\n", key)
-		fmt.Printf("StartTime:%s\n", node.StartTime)
-		fmt.Printf("ProxyAddr:%s\n", node.ProxyAddr)
-		fmt.Printf("Calls:%d\n", node.Calls)
-		fmt.Printf("FailCalls:%d\n\n", node.FailCalls)
+		GLogger.Printf("key:%s\n", key)
+		GLogger.Printf("StartTime:%s\n", node.StartTime)
+		GLogger.Printf("ProxyAddr:%s\n", node.ProxyAddr)
+		GLogger.Printf("Calls:%d\n", node.Calls)
+		GLogger.Printf("FailCalls:%d\n\n", node.FailCalls)
 	}
 }
 
 func GetRedisDayData(redisDataFile string, interval int) *RedisDataMap {
 	file, err := os.OpenFile(redisDataFile, os.O_RDONLY, os.ModePerm)
 	if err != nil {
-		fmt.Printf("open file [%s] failed,err:%s\n", redisDataFile, err.Error())
+		GLogger.Printf("open file [%s] failed,err:%s\n", redisDataFile, err.Error())
 		return nil
 	}
 	defer file.Close()
@@ -331,7 +331,7 @@ func GetRedisDayData(redisDataFile string, interval int) *RedisDataMap {
 				&tmpNode.StartTime, &tmpNode.ProxyAddr,
 				&tmpNode.Calls, &tmpNode.FailCalls)
 			if n1 != 4 {
-				fmt.Printf("sscanf form [%s] failed,err:%s\n", firstLine, err1.Error())
+				GLogger.Printf("sscanf form [%s] failed,err:%s\n", firstLine, err1.Error())
 				continue
 			}
 			if firstFlag == false {
@@ -341,18 +341,18 @@ func GetRedisDayData(redisDataFile string, interval int) *RedisDataMap {
 			if strings.Contains(lineData, firstTimeStr) == false {
 				flag = true
 			} else {
-				//fmt.Printf("firstLine:%s\n", lineData)
+				//GLogger.Printf("firstLine:%s\n", lineData)
 				firstNode.Datas[tmpNode.ProxyAddr] = tmpNode
 			}
 		} else {
 			lastLine = lineData
 		}
 	}
-	//fmt.Printf("lastLine is:%s\n", lastLine)
+	//GLogger.Printf("lastLine is:%s\n", lastLine)
 	var lastTimeStr string
 	n2, err2 := fmt.Sscanf(lastLine, "%s\t%*s\t%*s\t%*s\n", &lastTimeStr)
 	if n2 != 1 {
-		fmt.Printf("Sscanf [%s] failed,err:%s\n", lastLine, err2.Error())
+		GLogger.Printf("Sscanf [%s] failed,err:%s\n", lastLine, err2.Error())
 		return nil
 	}
 	// Get last all data
@@ -369,7 +369,7 @@ func GetRedisDayData(redisDataFile string, interval int) *RedisDataMap {
 				&tmpNode.StartTime, &tmpNode.ProxyAddr,
 				&tmpNode.Calls, &tmpNode.FailCalls)
 			if n3 != 4 {
-				fmt.Printf("sscanf form [%s] failed,err:%s\n", lineData, err3.Error())
+				GLogger.Printf("sscanf form [%s] failed,err:%s\n", lineData, err3.Error())
 				continue
 			}
 			lastNode.Datas[tmpNode.ProxyAddr] = tmpNode
@@ -404,39 +404,39 @@ func GetRedisDayData(redisDataFile string, interval int) *RedisDataMap {
 }
 
 func PrintRedisCmdMap(cmd *RedisCmdMap) {
-	fmt.Printf("-------------Begin Redis Cmd Map-------------\n")
-	fmt.Printf("TimeInterval:%d\n", cmd.TimeInterval)
-	fmt.Printf("StartTime:%s\n", cmd.StartTime)
-	fmt.Printf("EndTime:%s\n", cmd.EndTime)
-	fmt.Printf("Calls:%d\n", cmd.Calls)
-	fmt.Printf("FailCalls:%d\n", cmd.FailCalls)
-	fmt.Printf("Usecs:%d\n", cmd.Usecs)
-	fmt.Printf("FailUsecs:%d\n\n", cmd.FailUsecs)
+	GLogger.Printf("-------------Begin Redis Cmd Map-------------\n")
+	GLogger.Printf("TimeInterval:%d\n", cmd.TimeInterval)
+	GLogger.Printf("StartTime:%s\n", cmd.StartTime)
+	GLogger.Printf("EndTime:%s\n", cmd.EndTime)
+	GLogger.Printf("Calls:%d\n", cmd.Calls)
+	GLogger.Printf("FailCalls:%d\n", cmd.FailCalls)
+	GLogger.Printf("Usecs:%d\n", cmd.Usecs)
+	GLogger.Printf("FailUsecs:%d\n\n", cmd.FailUsecs)
 
 	for proxyaddr, proxy := range cmd.Proxys {
-		fmt.Printf("\tproxyaddr:%s\n", proxyaddr)
-		fmt.Printf("\tProxyAddr:%s\n", proxy.ProxyAddr)
-		fmt.Printf("\tCalls:%d\n", cmd.Calls)
-		fmt.Printf("\tFailCalls:%d\n", cmd.FailCalls)
-		fmt.Printf("\tUsecs:%d\n", cmd.Usecs)
-		fmt.Printf("\tFailUsecs:%d\n\n", cmd.FailUsecs)
+		GLogger.Printf("\tproxyaddr:%s\n", proxyaddr)
+		GLogger.Printf("\tProxyAddr:%s\n", proxy.ProxyAddr)
+		GLogger.Printf("\tCalls:%d\n", cmd.Calls)
+		GLogger.Printf("\tFailCalls:%d\n", cmd.FailCalls)
+		GLogger.Printf("\tUsecs:%d\n", cmd.Usecs)
+		GLogger.Printf("\tFailUsecs:%d\n\n", cmd.FailUsecs)
 
 		for _, data := range proxy.Cmds {
-			fmt.Printf("\t\tProxyAddr:%s\n", data.ProxyAddr)
-			fmt.Printf("\t\tCmd:%s\n", data.Cmd)
-			fmt.Printf("\t\tCalls:%d\n", data.Calls)
-			fmt.Printf("\t\tFailCalls:%d\n", data.FailCalls)
-			fmt.Printf("\t\tUsecs:%d\n", data.Usecs)
-			fmt.Printf("\t\tFailUsecs:%d\n\n", data.FailUsecs)
+			GLogger.Printf("\t\tProxyAddr:%s\n", data.ProxyAddr)
+			GLogger.Printf("\t\tCmd:%s\n", data.Cmd)
+			GLogger.Printf("\t\tCalls:%d\n", data.Calls)
+			GLogger.Printf("\t\tFailCalls:%d\n", data.FailCalls)
+			GLogger.Printf("\t\tUsecs:%d\n", data.Usecs)
+			GLogger.Printf("\t\tFailUsecs:%d\n\n", data.FailUsecs)
 		}
 	}
-	fmt.Printf("-------------End Redis Cmd Map-------------\n")
+	GLogger.Printf("-------------End Redis Cmd Map-------------\n")
 }
 
 func GetRedisDayCmd(redisCmdFile string, interval int) *RedisCmdMap {
 	file, err := os.OpenFile(redisCmdFile, os.O_RDONLY, os.ModePerm)
 	if err != nil {
-		fmt.Printf("open file [%s] failed,err:%s\n", redisCmdFile, err.Error())
+		GLogger.Printf("open file [%s] failed,err:%s\n", redisCmdFile, err.Error())
 		return nil
 	}
 	defer file.Close()
@@ -464,7 +464,7 @@ func GetRedisDayCmd(redisCmdFile string, interval int) *RedisCmdMap {
 				&tmpNode.StartTime, &tmpNode.ProxyAddr, &tmpNode.Cmd, &tmpNode.Calls,
 				&tmpNode.FailCalls, &tmpNode.FailUsecs, &tmpNode.Usecs, &tmpNode.UsecsPerCall)
 			if n1 != 8 {
-				fmt.Printf("sscanf form [%s] failed,err:%s\n", firstLine, err1.Error())
+				GLogger.Printf("sscanf form [%s] failed,err:%s\n", firstLine, err1.Error())
 				continue
 			}
 			if firstFlag == false {
@@ -474,7 +474,7 @@ func GetRedisDayCmd(redisCmdFile string, interval int) *RedisCmdMap {
 			if strings.Contains(lineData, firstTimeStr) == false {
 				flag = true
 			} else {
-				//fmt.Printf("firstLine:%s\n", lineData)
+				//GLogger.Printf("firstLine:%s\n", lineData)
 				CmdProxy := firstNode.Proxys[tmpNode.ProxyAddr]
 				if CmdProxy == nil {
 					CmdProxy := &RedisCmdProxy{ProxyAddr: tmpNode.ProxyAddr, Cmds: make(map[string]*RedisPerCmdNode)}
@@ -488,11 +488,11 @@ func GetRedisDayCmd(redisCmdFile string, interval int) *RedisCmdMap {
 			lastLine = lineData
 		}
 	}
-	//fmt.Printf("lastLine is:%s\n", lastLine)
+	//GLogger.Printf("lastLine is:%s\n", lastLine)
 	var lastTimeStr string
 	n2, err2 := fmt.Sscanf(lastLine, "%s\t%*s\t%*s\t%*s\t%*s\t%*s\t%*s\t%*s\n", &lastTimeStr)
 	if n2 != 1 {
-		fmt.Printf("Sscanf [%s] failed,err:%s\n", lastLine, err2.Error())
+		GLogger.Printf("Sscanf [%s] failed,err:%s\n", lastLine, err2.Error())
 		return nil
 	}
 	// Get last all data
@@ -509,7 +509,7 @@ func GetRedisDayCmd(redisCmdFile string, interval int) *RedisCmdMap {
 				&tmpNode.StartTime, &tmpNode.ProxyAddr, &tmpNode.Cmd, &tmpNode.Calls,
 				&tmpNode.FailCalls, &tmpNode.FailUsecs, &tmpNode.Usecs, &tmpNode.UsecsPerCall)
 			if n3 != 8 {
-				fmt.Printf("sscanf form [%s] failed,err:%s\n", lineData, err3.Error())
+				GLogger.Printf("sscanf form [%s] failed,err:%s\n", lineData, err3.Error())
 				continue
 			}
 			CmdProxy := lastNode.Proxys[tmpNode.ProxyAddr]

@@ -3,7 +3,8 @@
     "email_pwd":"xxx",
     "smtp_addr":"smtp.126.com:25",
     "to_addr":"xxx@qq.com",
-    "moni_interval":5,
+    "send_time":"9",
+    "moni_interval":30,
     "proxy_list":[
         {
             "addr":"http://10.98.28.22:11000/MoniData"
