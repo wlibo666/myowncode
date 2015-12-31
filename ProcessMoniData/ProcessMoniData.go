@@ -281,7 +281,7 @@ func GetTimeStr(t time.Time) string {
 
 func SendDayReport(conf *MoniDataConf) error {
 	var proxyData string = ""
-	var proxyCmd string = ""
+	//var proxyCmd string = ""
 	var redisData string = ""
 	var redisCmd string = ""
 	for _, proxy := range conf.ProxyList {
@@ -297,6 +297,7 @@ func SendDayReport(conf *MoniDataConf) error {
 		if proxyDataNode == nil {
 			continue
 		}
+
 		proxyData += GenProxyDataHtml(addr, proxyDataNode)
 		/*GLogger.Printf("interval:%d\n", proxyDataNode.TimeInterval)
 		GLogger.Printf("ConnNum:%d\n", proxyDataNode.ConnNum)
@@ -306,16 +307,16 @@ func SendDayReport(conf *MoniDataConf) error {
 		GLogger.Printf("OpSuccNum:%d\n", proxyDataNode.OpSuccNum)*/
 
 		// Get Proxy day cmd
-		proxyCmdFileName := ".proxy_" + addr + "." + PreTimeFalg + ".cmd"
+		/*proxyCmdFileName := ".proxy_" + addr + "." + PreTimeFalg + ".cmd"
 		proxyCmdMap := GetProxyDayCmd(proxyCmdFileName, conf.MoniInterval)
 		if proxyCmdMap == nil {
 			continue
 		}
-		proxyCmd += GenProxyCmdHtml(addr, proxyCmdMap)
+		proxyCmd += GenProxyCmdHtml(addr, proxyCmdMap)*/
 		//GLogger.Printf("Now Print CmdMap\n")
 		//PrintProxyCmdMap(proxyCmdMap)
 	}
-
+	InitAllRedisCmdNode()
 	for redisAddr, _ := range AllRedisAddr.RedisAddr {
 		tmpaddr := GetRedisIpAddr(redisAddr)
 		if len(tmpaddr) == 0 {
@@ -327,7 +328,8 @@ func SendDayReport(conf *MoniDataConf) error {
 		if redisDataMap == nil {
 			continue
 		}
-		redisData += GenRedisDataHtml(tmpaddr, redisDataMap)
+
+		redisData += GenRedisSummaryHtml(tmpaddr, redisDataMap)
 		//PrintRedisDataMap(redisDataMap)
 
 		// Get redis day cmd
@@ -336,17 +338,18 @@ func SendDayReport(conf *MoniDataConf) error {
 		if redisCmdMap == nil {
 			continue
 		}
-		redisCmd += GenRedisCmdHtml(tmpaddr, redisCmdMap)
+		CalcRedisCmd(tmpaddr, redisCmdMap)
 		//GLogger.Printf("redis addr[%s]\n", redisAddr)
 		//PrintRedisCmdMap(redisCmdMap)
 	}
+	redisCmd += GenRedisCmdHtml()
 	//GLogger.Printf("proxyData:%s\n", proxyData)
 	//GLogger.Printf("proxyCmd:%s\n", proxyCmd)
 	//GLogger.Print("redisData:%s\n", redisData)
 	//GLogger.Print("redisCmd:%s\n", redisCmd)
-	html := GenDayReportHtml(proxyData, proxyCmd, redisData, redisCmd)
+	html := GenDaySummaryReportHtml(proxyData, redisData, redisCmd)
 	var Subject string = "Codis集群监控统计 (" + PreTimeFalg + ")"
-
+	GLogger.Printf("report content:\n%s\n", html)
 	err := SendSmtpEmail(GlobalConfig.EmailAddr, conf.EmailPwd, conf.SmtpAddr, conf.ToAddr, Subject, html, "html")
 	if err != nil {
 		GLogger.Printf("Send Email [%s] to [%s] failed,err:%s\n", Subject, GlobalConfig.ToAddr, err.Error())
@@ -397,7 +400,7 @@ var TodayTime time.Time = time.Now()
 var TodayStr string = GetTimeStr(TodayTime)
 
 func TestSendReport() {
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 300; i++ {
 		time.Sleep(time.Second)
 	}
 	PreTimeFalg = TodayStr

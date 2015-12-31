@@ -140,7 +140,7 @@ func GetProxyDayData(proxyDataFile string, interval int) *ProxyPerDataNode {
 	returnNode = &ProxyPerDataNode{
 		TimeInterval: interval,
 		StartTime:    firstNode.StartTime,
-		EndTime:      lastNode.EndTime,
+		EndTime:      lastNode.StartTime,
 		ConnNum:      lastNode.ConnNum - firstNode.ConnNum,
 		ConnFailNum:  lastNode.ConnFailNum - firstNode.ConnFailNum,
 		OpNum:        lastNode.OpNum - firstNode.OpNum,
