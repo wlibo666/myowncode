@@ -278,7 +278,7 @@ func GetProxyDayCmd(proxyCmdFile string, interval int) *ProxyCmdMap {
 		returnNode.Calls += tmpNode.Calls
 		returnNode.FailCalls += tmpNode.FailCalls
 		returnNode.Usecs += tmpNode.Usecs
-		returnNode.FailUsecs += tmpBaseNode.FailUsecs
+		returnNode.FailUsecs += tmpNode.FailUsecs
 	}
 
 	return returnNode

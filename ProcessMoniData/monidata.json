@@ -1,13 +1,18 @@
 {
-    "email_addr":"wangchunyan1@letv.com",
-    "email_pwd":"wlibo666@126",
+    "email_addr":"@126.com",
+    "email_pwd":"xxx",
+    "smtp_addr":"smtp.126.com:25",
+    "to_addr":"xxx@qq.com",
     "moni_interval":5,
     "proxy_list":[
         {
-            "addr":"http://10.135.29.168:11000/MoniData"
+            "addr":"http://10.98.28.22:11000/MoniData"
         },
         {
-            "addr":"http://10.135.29.171:11000/MoniData"
+            "addr":"http://10.98.28.105:11000/MoniData"
+        },
+        {
+            "addr":"http://10.98.28.106:11000/MoniData"
         }
     ]
 }

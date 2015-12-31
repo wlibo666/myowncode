@@ -18,6 +18,8 @@ type ProxyConf struct {
 type MoniDataConf struct {
 	EmailAddr    string      `json:"email_addr"`
 	EmailPwd     string      `json:"email_pwd"`
+	SmtpAddr     string      `json:"smtp_addr"`
+	ToAddr       string      `json:"to_addr"`
 	MoniInterval int         `json:"moni_interval"`
 	ProxyList    []ProxyConf `json:"proxy_list"`
 }
@@ -47,6 +49,8 @@ func LoadConf(fileName string, v interface{}) error {
 func PrintConf(conf *MoniDataConf) {
 	fmt.Printf("email_addr:%s\n", conf.EmailAddr)
 	fmt.Printf("email_pwd:%s\n", conf.EmailPwd)
+	fmt.Printf("smtp_addr:%s\n", conf.SmtpAddr)
+	fmt.Printf("to_addr:%s\n", conf.ToAddr)
 	fmt.Printf("moni_interval:%d\n", conf.MoniInterval)
 
 	for i, proxy := range conf.ProxyList {
@@ -150,7 +154,6 @@ func GetIpAddrByUrl(proxyAddr string) string {
 }
 
 func SaveLineFile(fileName string, line string) error {
-	return nil
 	file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, os.ModePerm)
 	if err != nil {
 		fmt.Printf("openfile [%s] failed.", fileName)
@@ -189,7 +192,7 @@ func SaveMoniData(proxyAddr string, monidata *MoniData) error {
 	//fmt.Printf("ip addr is :[%s]\n", addr)
 	// save proxy data
 	timeStr := GetTimeStamp()
-	proxyDataFileName := "proxy_" + addr + "." + TodayStr + ".data"
+	proxyDataFileName := ".proxy_" + addr + "." + TodayStr + ".data"
 	linedata := fmt.Sprintf("%s\t%d\t%d\t%d\t%d\t%d\n", timeStr,
 		monidata.ProxyData.ConnNum, monidata.ProxyData.ConnFailNum,
 		monidata.ProxyData.OpNum, monidata.ProxyData.OpFailNum,
@@ -197,7 +200,7 @@ func SaveMoniData(proxyAddr string, monidata *MoniData) error {
 
 	SaveLineFile(proxyDataFileName, linedata)
 	// save proxy cmd
-	proxyCmdFileName := "proxy_" + addr + "." + TodayStr + ".cmd"
+	proxyCmdFileName := ".proxy_" + addr + "." + TodayStr + ".cmd"
 	for _, proxy := range monidata.ProxyData.ProxyCmdInfos {
 		cmddata := fmt.Sprintf("%s\t%s\t%d\t%d\t%d\t%d\t%d\n", timeStr,
 			proxy.Cmd, proxy.Calls, proxy.FailCalls, proxy.FailUsecs,
@@ -212,13 +215,13 @@ func SaveMoniData(proxyAddr string, monidata *MoniData) error {
 		if len(tmpaddr) == 0 {
 			tmpaddr = redis.RedisAddr
 		}
-		redisDataFileName := "redis_" + tmpaddr + "." + TodayStr + ".data"
+		redisDataFileName := ".redis_" + tmpaddr + "." + TodayStr + ".data"
 		redisdata := fmt.Sprintf("%s\t%s\t%d\t%d\n", timeStr, addr, redis.Calls, redis.FailCalls)
 		//fmt.Printf("file[%s],data:%s", redisDataFileName, redisdata)
 		SaveLineFile(redisDataFileName, redisdata)
 
 		// save redis cmd
-		redisCmdFileName := "redis_" + tmpaddr + "." + TodayStr + ".cmd"
+		redisCmdFileName := ".redis_" + tmpaddr + "." + TodayStr + ".cmd"
 		for _, cmd := range redis.CmdInfo {
 			redisCmdData := fmt.Sprintf("%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n", timeStr, addr,
 				cmd.Cmd, cmd.Calls, cmd.FailCalls, cmd.FailUsecs,
@@ -270,7 +273,15 @@ func GetTimeStr(t time.Time) string {
 	return fmt.Sprintf("%04d%02d%02d", t.Year(), t.Month(), t.Day())
 }
 
+func SaveData(data string) {
+
+}
+
 func SendDayReport(conf *MoniDataConf) error {
+	var proxyData string = ""
+	var proxyCmd string = ""
+	var redisData string = ""
+	var redisCmd string = ""
 	for _, proxy := range conf.ProxyList {
 		//fmt.Printf("proxy addr:%s\n", proxy.ProxyAddr)
 		addr := GetIpAddrByUrl(proxy.ProxyAddr)
@@ -279,11 +290,12 @@ func SendDayReport(conf *MoniDataConf) error {
 			continue
 		}
 		// Get Proxy day data
-		proxyDataFileName := "proxy_" + addr + "." + PreTimeFalg + ".data"
+		proxyDataFileName := ".proxy_" + addr + "." + PreTimeFalg + ".data"
 		proxyDataNode := GetProxyDayData(proxyDataFileName, conf.MoniInterval)
 		if proxyDataNode == nil {
 			continue
 		}
+		proxyData += GenProxyDataHtml(addr, proxyDataNode)
 		/*fmt.Printf("interval:%d\n", proxyDataNode.TimeInterval)
 		fmt.Printf("ConnNum:%d\n", proxyDataNode.ConnNum)
 		fmt.Printf("ConnFailNum:%d\n", proxyDataNode.ConnFailNum)
@@ -292,11 +304,12 @@ func SendDayReport(conf *MoniDataConf) error {
 		fmt.Printf("OpSuccNum:%d\n", proxyDataNode.OpSuccNum)*/
 
 		// Get Proxy day cmd
-		proxyCmdFileName := "proxy_" + addr + "." + PreTimeFalg + ".cmd"
+		proxyCmdFileName := ".proxy_" + addr + "." + PreTimeFalg + ".cmd"
 		proxyCmdMap := GetProxyDayCmd(proxyCmdFileName, conf.MoniInterval)
 		if proxyCmdMap == nil {
 			continue
 		}
+		proxyCmd += GenProxyCmdHtml(addr, proxyCmdMap)
 		//fmt.Printf("Now Print CmdMap\n")
 		//PrintProxyCmdMap(proxyCmdMap)
 	}
@@ -307,21 +320,34 @@ func SendDayReport(conf *MoniDataConf) error {
 			tmpaddr = redisAddr
 		}
 		// Get redis day data
-		redisDataFileName := "redis_" + tmpaddr + "." + PreTimeFalg + ".data"
+		redisDataFileName := ".redis_" + tmpaddr + "." + PreTimeFalg + ".data"
 		redisDataMap := GetRedisDayData(redisDataFileName, conf.MoniInterval)
 		if redisDataMap == nil {
 			continue
 		}
+		redisData += GenRedisDataHtml(tmpaddr, redisDataMap)
 		//PrintRedisDataMap(redisDataMap)
 
 		// Get redis day cmd
-		redisCmdFileName := "redis_" + tmpaddr + "." + PreTimeFalg + ".cmd"
+		redisCmdFileName := ".redis_" + tmpaddr + "." + PreTimeFalg + ".cmd"
 		redisCmdMap := GetRedisDayCmd(redisCmdFileName, conf.MoniInterval)
 		if redisCmdMap == nil {
 			continue
 		}
-		fmt.Printf("redis addr[%s]\n", redisAddr)
-		PrintRedisCmdMap(redisCmdMap)
+		redisCmd += GenRedisCmdHtml(tmpaddr, redisCmdMap)
+		//fmt.Printf("redis addr[%s]\n", redisAddr)
+		//PrintRedisCmdMap(redisCmdMap)
+	}
+	//fmt.Printf("proxyData:%s\n", proxyData)
+	//fmt.Printf("proxyCmd:%s\n", proxyCmd)
+	//fmt.Print("redisData:%s\n", redisData)
+	//fmt.Print("redisCmd:%s\n", redisCmd)
+	html := GenDayReportHtml(proxyData, proxyCmd, redisData, redisCmd)
+	var Subject string = "Codis集群监控统计 (" + PreTimeFalg + ")"
+
+	err := SendSmtpEmail(GlobalConfig.EmailAddr, conf.EmailPwd, conf.SmtpAddr, conf.ToAddr, Subject, html, "html")
+	if err != nil {
+		fmt.Printf("Send Email [%s] failed\n", Subject)
 	}
 	return nil
 }
@@ -333,7 +359,7 @@ func CheckDate() {
 	var tmpStr string = GetTimeStr(NowTime)
 
 	if TodayStr != tmpStr {
-		PreTimeFalg = tmpStr
+		PreTimeFalg = TodayStr
 		go func() {
 			err := SendDayReport(GlobalConfig)
 			if err != nil {
