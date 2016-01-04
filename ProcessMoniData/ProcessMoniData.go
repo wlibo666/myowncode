@@ -367,12 +367,7 @@ func CheckDate() {
 
 	if TodayStr != tmpStr {
 		PreTimeFalg = TodayStr
-		err := os.Setenv("REPORT_DATE", PreTimeFalg)
-		if err != nil {
-			GLogger.Printf("Setenv [REPORT_DATE]=[%s] failed.", PreTimeFalg)
-		} else {
-			GLogger.Printf("Setenv [REPORT_DATE]=[%s] success.", PreTimeFalg)
-		}
+		write_date(PreTimeFalg)
 		go func() {
 			for {
 				var t time.Time = time.Now()
@@ -386,7 +381,6 @@ func CheckDate() {
 			if err != nil {
 				GLogger.Printf("send report failed,err:%s\n", err.Error())
 			}
-			time.Sleep(time.Second * 3660)
 		}()
 		TodayStr = tmpStr
 	}
@@ -430,6 +424,27 @@ func DeleteExpireFile(days int) {
 	})
 }
 
+func write_date(date string) {
+	f, err := os.OpenFile(".date", os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.ModePerm)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	f.WriteString(date)
+	GLogger.Print("write date [%s]", date)
+}
+
+func read_date() string {
+	f, err := os.Open(".date")
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	var b []byte = make([]byte, 8)
+	f.Read(b)
+	return string(b)
+}
+
 func main() {
 	var argNum int = len(os.Args)
 	if argNum != 1 && argNum != 2 {
@@ -440,12 +455,14 @@ func main() {
 		ConfFile = os.Args[1]
 	}
 	InitLog()
-	PreTimeFalg = os.Getenv("REPORT_DATE")
+	PreTimeFalg = read_date()
+	GLogger.Printf("get pre date=%s", PreTimeFalg)
 	// Load config
 	err := LoadConf(ConfFile, &GlobalConfig)
 	if err != nil {
 		os.Exit(2)
 	}
+	GLogger.Printf("[%s] start.", os.Args[0])
 	//PrintConf(GlobalConfig)
 	// get monitor data
 	go func() {

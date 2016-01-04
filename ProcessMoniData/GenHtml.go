@@ -161,7 +161,7 @@ func GenRedisSummaryHtml(redisAddr string, cmd *RedisDataMap) string {
 
 var RedisCmdHead string = `<h3>Redis操作统计</h3>
     <table class="ui-table">
-        <th>操作类型</th><th>操作次数</th><th>单次操作耗时</th><th>失败次数</th><th>失败耗时</th>`
+        <th>操作类型</th><th>操作次数</th><th>单次操作耗时(毫秒)</th><th>失败次数</th><th>平均失败耗时(毫秒)</th>`
 var RedisCmdTemp string = "<tr><td>{cmd-type}</td><td>{op-num}</td><td>{op-sec}</td><td>{op-fail}</td><td>{fail-sec}</td></tr>"
 
 var AllRedisCmdNodes map[string]*RedisPerCmdNode = make(map[string]*RedisPerCmdNode)
@@ -199,12 +199,16 @@ func GenRedisCmdHtml() string {
 		s = strings.Replace(s, "{cmd-type}", key, 1)
 		s = strings.Replace(s, "{op-num}", strconv.FormatInt(cmds.Calls, 10), 1)
 		if cmds.Calls != 0 {
-			s = strings.Replace(s, "{op-sec}", fmt.Sprintf("%.5f", float64(cmds.Calls)/float64(cmds.Usecs)), 1)
+			s = strings.Replace(s, "{op-sec}", fmt.Sprintf("%.6f", (float64(cmds.Usecs)/float64(cmds.Calls))/1000), 1)
 		} else {
 			s = strings.Replace(s, "{op-sec}", "---", 1)
 		}
 		s = strings.Replace(s, "{op-fail}", strconv.FormatInt(cmds.FailCalls, 10), 1)
-		s = strings.Replace(s, "{fail-sec}", strconv.FormatInt(cmds.FailUsecs, 10), 1)
+		if cmds.FailUsecs > 0 {
+			s = strings.Replace(s, "{fail-sec}", fmt.Sprintf("%.6f", (float64(cmds.FailUsecs)/float64(cmds.FailCalls))/1000), 1)
+		} else {
+			s = strings.Replace(s, "{fail-sec}", "---", 1)
+		}
 		data += s
 	}
 	return data
