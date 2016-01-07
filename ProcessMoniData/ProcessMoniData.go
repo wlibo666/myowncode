@@ -243,6 +243,10 @@ func CollectMoniData(conf *MoniDataConf) error {
 	for {
 		for _, proxy := range conf.ProxyList {
 			resp, err := http.Get(proxy.ProxyAddr)
+			if resp == nil || resp.Body == nil {
+				GLogger.Printf("conn get [%s] failed\n", proxy.ProxyAddr)
+				continue
+			}
 			defer resp.Body.Close()
 			if err != nil {
 				GLogger.Printf("Get [%s] failed,err:%s\n", proxy.ProxyAddr, err.Error())
@@ -397,7 +401,7 @@ func TestSendReport() {
 	for i := 0; i < 300; i++ {
 		time.Sleep(time.Second)
 	}
-	PreTimeFalg = TodayStr
+	PreTimeFalg = "20160106"
 	SendDayReport(GlobalConfig)
 }
 
@@ -431,7 +435,7 @@ func write_date(date string) {
 	}
 	defer f.Close()
 	f.WriteString(date)
-	GLogger.Print("write date [%s]", date)
+	GLogger.Printf("write date [%s]", date)
 }
 
 func read_date() string {
@@ -475,6 +479,6 @@ func main() {
 	//TestSendReport()
 	for {
 		time.Sleep(time.Second * 3600)
-		DeleteExpireFile(7)
+		DeleteExpireFile(2)
 	}
 }

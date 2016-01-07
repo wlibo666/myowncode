@@ -10,8 +10,10 @@ import (
 	"github.com/wandoulabs/zkhelper"
 	"hash/crc32"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -144,6 +146,97 @@ func checkInvalidData(c redis.Conn, key string, keytype string, slotId int) {
 	}
 }
 
+func execResult(cmdstr string) string {
+	cmd := exec.Command("/bin/sh", "-c", cmdstr)
+	if cmd == nil {
+		Slog.Printf("exec [%s] failed", cmdstr)
+		return ""
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		Slog.Printf("StdoutPipe failed")
+		return ""
+	}
+	e := cmd.Start()
+	if e != nil {
+		Slog.Printf("start cmd failed,err:%s", e.Error())
+		return ""
+	}
+	bytes, eio := ioutil.ReadAll(stdout)
+	if eio != nil {
+		Slog.Printf("readl all failed,err:%s", eio.Error())
+		return ""
+	}
+	e = cmd.Wait()
+	if e != nil {
+		Slog.Printf("cmd wait failed,err:%s", e.Error())
+		return ""
+	}
+	return string(bytes)
+}
+
+var GredisCmd string = "/letv/codis/bin/redis-cli -p 6381 "
+
+func getPerFieldLen(c redis.Conn, key string, keytype string) int {
+	var pervaluelen int = 0
+	switch keytype {
+	case "hash":
+		cmdstr := GredisCmd + "hscan " + key + " 0 count 1"
+		Slog.Printf("now will hscan key[%s],cmd[%s]", key, cmdstr)
+		res := execResult(cmdstr)
+		//Slog.Printf("res:%s", res)
+		reslen := len(res)
+		if reslen > 0 {
+			pervaluelen = (reslen - len(key)) / 2
+		}
+	case "list":
+		cmdstr := GredisCmd + "lindex " + key + " 0"
+		Slog.Printf("now will lindex key[%s],cmd[%s]", key, cmdstr)
+		res := execResult(cmdstr)
+		reslen := len(res)
+		if reslen > 0 {
+			pervaluelen = reslen
+		}
+	case "set":
+		cmdstr := GredisCmd + "sscan " + key + " 0 count 1"
+		Slog.Printf("now will sscan key[%s],cmd[%s]", key, cmdstr)
+		res := execResult(cmdstr)
+		reslen := len(res)
+		if reslen > 0 {
+			pervaluelen = reslen
+		}
+	case "zset":
+		cmdstr := GredisCmd + "zscan " + key + " 1 count 1"
+		Slog.Printf("now will zscan key[%s],cmd[%s]", key, cmdstr)
+		res := execResult(cmdstr)
+		reslen := len(res)
+		if reslen > 0 {
+			pervaluelen = reslen / 4
+		}
+
+	default:
+		return 0
+
+	}
+
+	return pervaluelen
+}
+
+func saveBigKeys(slotIndex int, key string, keytype string, fieldlen int, pervaluelen int) {
+	addr := strings.Split(RedisAddr, ":")
+	var filename string = "./" + addr[0] + ".bigkeys"
+
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_APPEND, os.ModePerm)
+	if err != nil {
+		Slog.Printf("open file [%s] failed,err:%s\n", filename, err.Error())
+		return
+	}
+	defer fp.Close()
+	keyinfo := fmt.Sprintf("%d\t%s\t%s\t%d\t%d\t%d\n", slotIndex, key, keytype, fieldlen, pervaluelen, fieldlen*pervaluelen)
+	fp.WriteString(keyinfo)
+	return
+}
+
 func checkPerKey(c redis.Conn, key string) error {
 	keytype, err := c.Do("TYPE", key)
 	if err != nil {
@@ -202,6 +295,11 @@ func checkPerKey(c redis.Conn, key string) error {
 	if keylen > 4096 {
 		Slog.Printf("key [%s],type [%s], len is [%d],too long,slot [%d] should not migrate", key, keytype, keylen, slotIndex)
 		AllSlots.failflag[slotIndex] = true
+		pervaluelen := getPerFieldLen(c, key, keytype.(string))
+		Slog.Printf("get key[%s],type[%s],pervalue len[%d]", key, keytype, pervaluelen)
+		if pervaluelen > 0 {
+			saveBigKeys(slotIndex, key, keytype.(string), int(keylen), pervaluelen)
+		}
 		return nil
 		//return errors.New("key's len is too long")
 	}
