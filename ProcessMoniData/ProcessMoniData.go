@@ -243,15 +243,16 @@ func CollectMoniData(conf *MoniDataConf) error {
 	for {
 		for _, proxy := range conf.ProxyList {
 			resp, err := http.Get(proxy.ProxyAddr)
+			if err != nil {
+				GLogger.Printf("Get [%s] failed,err:%s\n", proxy.ProxyAddr, err.Error())
+				continue
+			}
+
 			if resp == nil || resp.Body == nil {
 				GLogger.Printf("conn get [%s] failed\n", proxy.ProxyAddr)
 				continue
 			}
 			defer resp.Body.Close()
-			if err != nil {
-				GLogger.Printf("Get [%s] failed,err:%s\n", proxy.ProxyAddr, err.Error())
-				continue
-			}
 			data, err := io.ReadAll(resp.Body)
 			//GLogger.Printf("data:%s\n", string(data))
 			monidata := NewMoniData()
