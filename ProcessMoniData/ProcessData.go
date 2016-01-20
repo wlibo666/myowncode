@@ -14,6 +14,7 @@ func GenHtmlPage() string {
 
 type ProxyPerDataNode struct {
 	TimeInterval int
+	Addr         string
 	StartTime    string
 	EndTime      string
 	ConnNum      int64
@@ -89,6 +90,48 @@ type RedisCmdMap struct {
 	FailUsecs    int64
 	Usecs        int64
 	Proxys       map[string]*RedisCmdProxy
+}
+
+func PrintDayData2(data [64]*ProxyPerDataNode) {
+	GLogger.Printf("now will print DayData2")
+	for index, node := range data {
+		if node != nil {
+			GLogger.Printf("index[%d],start[%s],end[%s],conn[%d],connFail[%d],opnum[%d],opfail[%d]",
+				index, node.StartTime, node.EndTime, node.ConnNum, node.ConnFailNum, node.OpNum,
+				node.OpFailNum)
+		}
+	}
+}
+
+func GetProxyDayData2(proxyDataFile string) [64]*ProxyPerDataNode {
+	var tmpProxysData [64]*ProxyPerDataNode
+
+	file, err := os.OpenFile(proxyDataFile, os.O_RDONLY, os.ModePerm)
+	if err != nil {
+		GLogger.Printf("open file [%s] failed,err:%s\n", proxyDataFile, err.Error())
+		return tmpProxysData
+	}
+	defer file.Close()
+	var index int = 0
+	rd := bufio.NewReader(file)
+	for {
+		lineData, err := rd.ReadString('\n')
+		if err != nil || err == io.EOF {
+			break
+		}
+		var tmpProxyData *ProxyPerDataNode = &ProxyPerDataNode{}
+		res, e := fmt.Sscanf(lineData, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n", &tmpProxyData.Addr, &tmpProxyData.StartTime, &tmpProxyData.EndTime,
+			&tmpProxyData.ConnNum, &tmpProxyData.ConnFailNum, &tmpProxyData.OpNum, &tmpProxyData.OpFailNum, &tmpProxyData.OpSuccNum)
+		if res != 8 && e != nil {
+			GLogger.Printf("GetProxyDayData2 sscanf [%s] failed,err:%s.", lineData, e.Error())
+			continue
+		}
+		tmpProxysData[index] = tmpProxyData
+		index++
+	}
+	//GLogger.Printf("print dayday2 and return")
+	//PrintDayData2(tmpProxysData)
+	return tmpProxysData
 }
 
 func GetProxyDayData(proxyDataFile string, interval int) *ProxyPerDataNode {

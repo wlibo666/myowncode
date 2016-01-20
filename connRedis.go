@@ -107,7 +107,7 @@ func pool1Init() *redis.Pool {
 func insertData() {
 	pool1 = poolInit()
 	c := pool1.Get()
-	for i := 10000000; i < 10500000; i++ {
+	for i := 10500000; i < 11500000; i++ {
 		setKeyValue(i, c)
 		if i%5000 == 0 {
 			fmt.Printf("now [%s] insert suc %d times, fail %d times.\n", time.Now().String(), SuccTimes, FailTimes)
@@ -181,7 +181,7 @@ func insertHashData() {
 	pool1 = poolInit()
 	c := pool1.Get()
 	keyname := "hashKey"
-	for i := 0; i < 2000000; i++ {
+	for i := 550000; i < 2000000; i++ {
 		t := strconv.Itoa(i)
 		field := ("field-" + t)
 		value := ("hashvalue-" + t + prefix)
