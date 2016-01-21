@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -247,16 +246,6 @@ func SaveMoniData(proxyAddr string, monidata *MoniData) error {
 	return nil
 }
 
-var GlobalLock sync.Mutex = sync.Mutex{}
-
-func GLock() {
-	GlobalLock.Lock()
-}
-
-func GUnlock() {
-	GlobalLock.Unlock()
-}
-
 // 上一次的代理信息
 var PreStatisticProxyData [64]*ProxyPerDataNode
 
@@ -303,7 +292,6 @@ func CollectMoniData(conf *MoniDataConf) error {
 			//GLogger.Printf("----print moni proxy data----")
 			//GLogger.Printf("now conn:%d,failConn:%d,OpNum:%d,succOp:%d", monidata.ProxyData.ConnNum, monidata.ProxyData.ConnFailNum, monidata.ProxyData.OpNum, monidata.ProxyData.OpSuccNum)
 			// 记录当天的统计结果
-			GLock()
 			tmpCur := CurrProxyData[index]
 			if tmpCur == nil {
 				//GLogger.Printf("currproxydata[%d] is nil", index)
@@ -372,8 +360,6 @@ func CollectMoniData(conf *MoniDataConf) error {
 
 			// 处理redis数据
 			ProcessRedisMoniData(index, proxy.ProxyAddr, monidata)
-			GUnlock()
-
 			index++
 		}
 		// 将最新的统计结果持久化到文件
@@ -389,15 +375,15 @@ func CollectMoniData(conf *MoniDataConf) error {
 		//PrintCurrProxyData(CurrProxyData)
 
 		// 根据统计数据检测服务器是否出现问题，如果有则处理
-		GLock()
 		CheckServerAndWarn()
-		GUnlock()
 		for i := 0; i < conf.MoniInterval; i++ {
 			time.Sleep(time.Second)
 		}
 	}
 	return nil
 }
+
+var PreEmailTime int64 = 0
 
 func CheckServerAndWarn() {
 	var datastr string = ""
@@ -433,18 +419,25 @@ func CheckServerAndWarn() {
 	if len(datastr) <= 10 {
 		return
 	}
-	datastr = strings.Replace(datastr, "{new-line}", "\n", 3)
+	datastr = strings.Replace(datastr, "{new-line}", "\n", -1)
 	GLogger.Printf("warn msg:[%s]", datastr)
 
-	t := time.Now()
-	Subject := fmt.Sprintf("codis集群告警(%04d-%02d-%02d %02d:%02d:%02d)", t.Year(), t.Month(), t.Day(),
-		t.Hour(), t.Minute(), t.Second())
+	tt := time.Now()
+	Subject := fmt.Sprintf("codis集群告警(%04d-%02d-%02d %02d:%02d:%02d)", tt.Year(), tt.Month(), tt.Day(),
+		tt.Hour(), tt.Minute(), tt.Second())
 
+	t := tt.Unix()
+
+	if (PreEmailTime != 0) && (t-PreEmailTime) < 300 {
+		GLogger.Printf("something error but now time is too short from last sending warn email,should not send now.")
+		return
+	}
 	err := SendSmtpEmail(GlobalConfig.EmailAddr, GlobalConfig.EmailPwd, GlobalConfig.SmtpAddr, GlobalConfig.ToAddr, Subject, datastr, "text")
 	if err != nil {
 		GLogger.Printf("Send Warn Email [%s] to [%s] failed,err:%s\n", Subject, GlobalConfig.ToAddr, err.Error())
 	} else {
 		GLogger.Printf("Send Warn Email [%s] to [%s] success\n", Subject, GlobalConfig.ToAddr)
+		PreEmailTime = t
 	}
 }
 
@@ -1185,7 +1178,6 @@ func SendDayReport2(conf *MoniDataConf) error {
 	var proxyData string = ""
 	var redisData string = ""
 	var redisCmd string = ""
-	GLock()
 	proxyDataFileName := GenStatisProxyDataName()
 	proxyDataNode := GetProxyDayData2(proxyDataFileName)
 	proxyData = GenProxyDataHtml2(proxyDataNode)
@@ -1202,7 +1194,6 @@ func SendDayReport2(conf *MoniDataConf) error {
 	redisCmdS := LoadRedisCmd(redisCmdFileName)
 	redisCmd = GenRedisCmd2(redisCmdS)
 	//GLogger.Printf("SendDayReport2 redis cmd:%s", redisCmd)
-	GUnlock()
 	html := GenDaySummaryReportHtml(proxyData, redisData, redisCmd)
 	var Subject string = "Codis集群监控统计 (" + PreTimeFlag + ")"
 	GLogger.Printf("email[%s],content\n%s\n", Subject, html)
@@ -1336,10 +1327,11 @@ var TodayTime time.Time = time.Now()
 var TodayStr string = GetTimeStr(TodayTime)
 
 func TestSendReport() {
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 1800; i++ {
 		time.Sleep(time.Second)
 	}
-	//PreTimeFlag = "20160118"
+
+	PreTimeFlag = TodayStr
 	SendDayReport2(GlobalConfig)
 
 	os.Exit(0)
