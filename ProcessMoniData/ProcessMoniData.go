@@ -1180,19 +1180,24 @@ func SendDayReport2(conf *MoniDataConf) error {
 	var redisCmd string = ""
 	proxyDataFileName := GenStatisProxyDataName()
 	proxyDataNode := GetProxyDayData2(proxyDataFileName)
+
 	proxyData = GenProxyDataHtml2(proxyDataNode)
 	//GLogger.Printf("SendDayReport2 proxy data:%s", proxyData)
 
 	// get redis day data statistics
 	redisDataFileName := GenStatisRedisDataName()
 	redisDataS := LoadRedisData(redisDataFileName)
-	redisData = GenRedisData2(redisDataS)
+	if redisDataS != nil {
+		redisData = GenRedisData2(redisDataS)
+	}
 	//GLogger.Printf("SendDayReport2 redis data:%s", redisData)
 
 	// get redis day cmd statistics
 	redisCmdFileName := GenStatisRedisCmdName()
 	redisCmdS := LoadRedisCmd(redisCmdFileName)
-	redisCmd = GenRedisCmd2(redisCmdS)
+	if redisCmdS != nil {
+		redisCmd = GenRedisCmd2(redisCmdS)
+	}
 	//GLogger.Printf("SendDayReport2 redis cmd:%s", redisCmd)
 	html := GenDaySummaryReportHtml(proxyData, redisData, redisCmd)
 	var Subject string = "Codis集群监控统计 (" + PreTimeFlag + ")"
@@ -1327,14 +1332,14 @@ var TodayTime time.Time = time.Now()
 var TodayStr string = GetTimeStr(TodayTime)
 
 func TestSendReport() {
-	for i := 0; i < 1800; i++ {
+	PreTimeFlag = TodayStr
+	for i := 0; i < 3600; i++ {
 		time.Sleep(time.Second)
 	}
 
-	PreTimeFlag = TodayStr
 	SendDayReport2(GlobalConfig)
 
-	os.Exit(0)
+	//os.Exit(0)
 }
 
 func InitLog() {
