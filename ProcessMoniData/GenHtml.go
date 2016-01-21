@@ -96,7 +96,7 @@ func GenProxyDataHtmlPer(data *ProxyPerDataNode) string {
 	}
 
 	s = strings.Replace(s, "{op-fail}", strconv.FormatInt(data.OpFailNum, 10), 1)
-	if data.OpNum > 0 && float64(data.OpFailNum)/float64(data.OpNum) > 0.0001 {
+	if data.OpNum > 0 && float64(data.OpFailNum)/float64(data.OpNum) > 0.0002 {
 		s = strings.Replace(s, "{ops-color}", BgRedColor, 1)
 	} else {
 		s = strings.Replace(s, "{ops-color}", "", 1)
@@ -113,7 +113,7 @@ func GenProxyDataHtml2(data [64]*ProxyPerDataNode) string {
 		if proxy == nil {
 			continue
 		}
-		if proxy.OpNum <= 0 {
+		if proxy.OpNum <= 10 {
 			continue
 		}
 		s := GenProxyDataHtmlPer(proxy)
@@ -149,7 +149,7 @@ func GenProxyDataHtml(proxyAddr string, data *ProxyPerDataNode) string {
 	}
 
 	s = strings.Replace(s, "{op-fail}", strconv.FormatInt(data.OpFailNum, 10), 1)
-	if data.OpNum > 0 && float64(data.OpFailNum)/float64(data.OpNum) > 0.0001 {
+	if data.OpNum > 0 && float64(data.OpFailNum)/float64(data.OpNum) > 0.0002 {
 		s = strings.Replace(s, "{ops-color}", BgRedColor, 1)
 	} else {
 		s = strings.Replace(s, "{ops-color}", "", 1)
@@ -190,9 +190,7 @@ func GenProxyCmdHtml(proxyAddr string, cmd *ProxyCmdMap) string {
 	return data
 }
 
-var RedisDataHead string = `<h3>Redis全局信息统计</h3>
-    <table class="ui-table">
-        <th>Redis地址</th><th>代理地址</th><th>总操作次数</th><th>操作失败次数</th>`
+var RedisDataHead string = `<h3>Redis全局信息统计</h3><table class="ui-table"><th>Redis地址</th><th>代理地址</th><th>总操作次数</th><th>操作失败次数</th>`
 var RedisDataTemp string = "<tr><td>{redis-addr}</td><td>{proxy-addr}</td><td>{op-num}</td><td>{op-fail}</td>"
 
 func GenRedisDataHtml(redisAddr string, cmd *RedisDataMap) string {
@@ -216,9 +214,7 @@ func GenRedisDataHtml(redisAddr string, cmd *RedisDataMap) string {
 	return data
 }
 
-var RedisSummaryHead string = `<h3>Redis全局信息统计</h3>
-    <table class="ui-table">
-        <th>Redis地址</th><th>总操作次数</th><th>OPS</th><th>操作失败次数</th>`
+var RedisSummaryHead string = `<h3>Redis全局信息统计</h3><table class="ui-table"><th>Redis地址</th><th>总操作次数</th><th>OPS</th><th>操作失败次数</th>`
 var RedisSummaryTemp string = "<tr><td>{redis-addr}</td><td>{op-num}</td><td>{redis-ops}</td><td {op-color}>{op-fail}</td>"
 
 func GenRedisSummaryHtml(redisAddr string, cmd *RedisDataMap) string {
@@ -237,7 +233,7 @@ func GenRedisSummaryHtml(redisAddr string, cmd *RedisDataMap) string {
 	}
 	s = strings.Replace(s, "{op-fail}", strconv.FormatInt(cmd.FailCalls, 10), 1)
 	if cmd.Calls > 0 {
-		if float64(cmd.FailCalls)/float64(cmd.Calls) > 0.0001 {
+		if float64(cmd.FailCalls)/float64(cmd.Calls) > 0.0002 {
 			s = strings.Replace(s, "{op-color}", BgRedColor, 1)
 		} else {
 			s = strings.Replace(s, "{op-color}", "", 1)
@@ -249,21 +245,26 @@ func GenRedisSummaryHtml(redisAddr string, cmd *RedisDataMap) string {
 }
 
 func GenRedisPerRecord(addr string, record *RedisDataRecord) string {
+	// get record start and end time
 	var start, end int
 	var e error
 	if record == nil {
+		GLogger.Printf("record is nil")
 		return ""
 	}
 	start, e = strconv.Atoi(record.StartTime)
 	if e != nil {
+		GLogger.Printf("atoi start time [%s] failed", record.StartTime)
 		return ""
 	}
 	end, e = strconv.Atoi(record.EndTime)
 	if e != nil {
+		GLogger.Printf("atoi end time [%s] failed", record.EndTime)
 		return ""
 	}
 	var s string = RedisSummaryTemp
 	secs := (end - start)
+	//GLogger.Printf("start[%s],end[%s],secs[%d]", record.StartTime, record.EndTime, secs)
 
 	s = strings.Replace(s, "{redis-addr}", addr, 1)
 	s = strings.Replace(s, "{op-num}", strconv.FormatInt(record.OpNum, 10), 1)
@@ -274,7 +275,7 @@ func GenRedisPerRecord(addr string, record *RedisDataRecord) string {
 	}
 	s = strings.Replace(s, "{op-fail}", strconv.FormatInt(record.OpFailNum, 10), 1)
 	if record.OpNum > 0 {
-		if float64(record.OpFailNum)/float64(record.OpNum) > 0.0001 {
+		if float64(record.OpFailNum)/float64(record.OpNum) > 0.0002 {
 			s = strings.Replace(s, "{op-color}", BgRedColor, 1)
 		} else {
 			s = strings.Replace(s, "{op-color}", "", 1)
@@ -282,15 +283,23 @@ func GenRedisPerRecord(addr string, record *RedisDataRecord) string {
 	} else {
 		s = strings.Replace(s, "{op-color}", "", 1)
 	}
+	//GLogger.Printf("s is :%s", s)
 	return s
 }
 
 func GenRedisData2(data *RedisDataStatistic) string {
 	var datastr string = ""
 	for addr, redis := range data.Records {
+		if len(addr) == 0 || redis == nil {
+			continue
+		}
+		if redis.OpNum <= 0 {
+			continue
+		}
 		s := GenRedisPerRecord(addr, redis)
 		datastr += s
 	}
+	//GLogger.Printf("data str is:%s", datastr)
 	return datastr
 }
 
@@ -325,6 +334,12 @@ func GenRedisPerCmd(cmdname string, cmds *RedisCmdRecord) string {
 func GenRedisCmd2(data *RedisCmdStatistic) string {
 	var datastr string = ""
 	for cmdname, redis := range data.Cmds {
+		if len(cmdname) == 0 || redis == nil {
+			continue
+		}
+		if redis.OpNum <= 0 {
+			continue
+		}
 		s := GenRedisPerCmd(cmdname, redis)
 		datastr += s
 	}

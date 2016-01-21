@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -107,6 +108,8 @@ type MoniData struct {
 
 func NewMoniData() *MoniData {
 	monidata := &MoniData{}
+	monidata.ProxyData.ProxyCmdInfos = make([]PerCmdInfo, 0, 64)
+	monidata.ProxyData.RedisCmdInfos = make([]RedisCmdInfo, 0, 256)
 	return monidata
 }
 
@@ -244,6 +247,16 @@ func SaveMoniData(proxyAddr string, monidata *MoniData) error {
 	return nil
 }
 
+var GlobalLock sync.Mutex = sync.Mutex{}
+
+func GLock() {
+	GlobalLock.Lock()
+}
+
+func GUnlock() {
+	GlobalLock.Unlock()
+}
+
 // 上一次的代理信息
 var PreStatisticProxyData [64]*ProxyPerDataNode
 
@@ -253,6 +266,7 @@ var CurrProxyData [64]*ProxyPerDataNode
 func CollectMoniData(conf *MoniDataConf) error {
 	for {
 		var index int = 0
+
 		//GLogger.Printf("now will get monidata")
 		for _, proxy := range conf.ProxyList {
 			resp, err := http.Get(proxy.ProxyAddr)
@@ -274,13 +288,22 @@ func CollectMoniData(conf *MoniDataConf) error {
 				GLogger.Printf("unmarshal data from add [%s] failed,err:%s.\n", proxy.ProxyAddr, err.Error())
 				continue
 			}
+
+			//GLogger.Printf("---print moni data----")
 			//PrintMoniData(proxy.ProxyAddr, monidata)
 
 			err = SaveMoniData(proxy.ProxyAddr, monidata)
 			if err != nil {
 				continue
 			}
+
+			//GLogger.Printf("------print pre proxy data-----")
+			//PrintCurrProxyData(PreStatisticProxyData)
+
+			//GLogger.Printf("----print moni proxy data----")
+			//GLogger.Printf("now conn:%d,failConn:%d,OpNum:%d,succOp:%d", monidata.ProxyData.ConnNum, monidata.ProxyData.ConnFailNum, monidata.ProxyData.OpNum, monidata.ProxyData.OpSuccNum)
 			// 记录当天的统计结果
+			GLock()
 			tmpCur := CurrProxyData[index]
 			if tmpCur == nil {
 				//GLogger.Printf("currproxydata[%d] is nil", index)
@@ -293,6 +316,7 @@ func CollectMoniData(conf *MoniDataConf) error {
 			} else {
 				tmpCur.EndTime = fmt.Sprintf("%d", time.Now().Unix())
 			}
+
 			// 保存上一次代理统计记录
 			tmp := PreStatisticProxyData[index]
 			if tmp == nil {
@@ -345,10 +369,12 @@ func CollectMoniData(conf *MoniDataConf) error {
 				tmp.OpFailNum = monidata.ProxyData.OpFailNum
 				tmp.OpSuccNum = monidata.ProxyData.OpSuccNum
 			}
-			index++
 
 			// 处理redis数据
-			ProcessRedisMoniData(monidata)
+			ProcessRedisMoniData(index, proxy.ProxyAddr, monidata)
+			GUnlock()
+
+			index++
 		}
 		// 将最新的统计结果持久化到文件
 		SaveCurProxyRecord()
@@ -361,11 +387,65 @@ func CollectMoniData(conf *MoniDataConf) error {
 
 		//GLogger.Printf("print curr proxy data after get monidata")
 		//PrintCurrProxyData(CurrProxyData)
+
+		// 根据统计数据检测服务器是否出现问题，如果有则处理
+		GLock()
+		CheckServerAndWarn()
+		GUnlock()
 		for i := 0; i < conf.MoniInterval; i++ {
 			time.Sleep(time.Second)
 		}
 	}
 	return nil
+}
+
+func CheckServerAndWarn() {
+	var datastr string = ""
+	for _, proxy := range CurrProxyData {
+		if proxy == nil {
+			continue
+		}
+		tmpaddr := GetIpAddrByUrl(proxy.Addr)
+		if len(tmpaddr) == 0 {
+			tmpaddr = proxy.Addr
+		}
+		// 连接数失败过多
+		if float64(proxy.ConnFailNum)/float64(proxy.ConnNum) > 0.01 {
+			s := fmt.Sprintf("proxy[%s] connection number [%d] but fail number [%d],please check it.{new-line}",
+				tmpaddr, proxy.ConnNum, proxy.ConnFailNum)
+			datastr += s
+		}
+		// 操作失败过多
+		if float64(proxy.OpFailNum)/float64(proxy.OpNum) > 0.0002 {
+			s := fmt.Sprintf("proxy[%s] op number [%d] but fail number [%d],please check it.{new-line}",
+				tmpaddr, proxy.OpNum, proxy.OpFailNum)
+			datastr += s
+		}
+	}
+	for addr, record := range CurrRedisData.Records {
+		if float64(record.OpFailNum)/float64(record.OpNum) > 0.0002 {
+			s := fmt.Sprintf("redis [%s] op number [%d],but fail num [%d],please check it.{new-line}",
+				addr, record.OpNum, record.OpFailNum)
+			datastr += s
+		}
+	}
+
+	if len(datastr) <= 10 {
+		return
+	}
+	datastr = strings.Replace(datastr, "{new-line}", "\n", 3)
+	GLogger.Printf("warn msg:[%s]", datastr)
+
+	t := time.Now()
+	Subject := fmt.Sprintf("codis集群告警(%04d-%02d-%02d %02d:%02d:%02d)", t.Year(), t.Month(), t.Day(),
+		t.Hour(), t.Minute(), t.Second())
+
+	err := SendSmtpEmail(GlobalConfig.EmailAddr, GlobalConfig.EmailPwd, GlobalConfig.SmtpAddr, GlobalConfig.ToAddr, Subject, datastr, "text")
+	if err != nil {
+		GLogger.Printf("Send Warn Email [%s] to [%s] failed,err:%s\n", Subject, GlobalConfig.ToAddr, err.Error())
+	} else {
+		GLogger.Printf("Send Warn Email [%s] to [%s] success\n", Subject, GlobalConfig.ToAddr)
+	}
 }
 
 // 关于redis操作
@@ -377,14 +457,15 @@ type RedisDataRecord struct {
 }
 
 type RedisDataStatistic struct {
-	Records map[string]*RedisDataRecord
+	ProxyAddr string
+	Records   map[string]*RedisDataRecord
 }
 
 var CurrRedisData RedisDataStatistic = RedisDataStatistic{
 	Records: make(map[string]*RedisDataRecord),
 }
 
-var PreRedisData *RedisDataStatistic
+var StatisPreRedisData [64]*RedisDataStatistic
 
 type RedisCmdRecord struct {
 	StartTime  string
@@ -396,14 +477,15 @@ type RedisCmdRecord struct {
 }
 
 type RedisCmdStatistic struct {
-	Cmds map[string]*RedisCmdRecord
+	ProxyAddr string
+	Cmds      map[string]*RedisCmdRecord
 }
 
 var CurrRedisCmd RedisCmdStatistic = RedisCmdStatistic{
 	Cmds: make(map[string]*RedisCmdRecord),
 }
 
-var PreRedisCmd *RedisCmdStatistic
+var StatisPreRedisCmd [64]*RedisCmdStatistic
 
 func PrintRedisData(data *RedisDataStatistic) {
 	if data == nil {
@@ -434,52 +516,99 @@ func GenPreRedisCmdName() string {
 	return fmt.Sprintf(".pre_redis_cmd.%s", PreTimeFlag)
 }
 
-func SaveRedisStatisticData(filename string, data *RedisDataStatistic) {
+func SaveCurRedisData(filename string, data *RedisDataStatistic) {
 	tmpfile, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.ModePerm)
 	if tmpfile == nil {
 		GLogger.Printf("open file [%s] failed,err:%s", filename, err.Error())
 	} else {
 		defer tmpfile.Close()
-		var i int = 0
+
 		for addr, record := range data.Records {
 			s := fmt.Sprintf("%s\t%s\t%s\t%d\t%d\n", addr, record.StartTime,
 				record.EndTime, record.OpNum, record.OpFailNum)
 			tmpfile.WriteString(s)
 			//GLogger.Printf("cur proxy data %s [%s]", time.Now().String(), s)
-			i++
 		}
 	}
 }
 
-func SaveRedisStatisticCmd(filename string, cmds *RedisCmdStatistic) {
+func SaveRedisStatisticData(filename string, alldata [64]*RedisDataStatistic) {
 	tmpfile, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.ModePerm)
 	if tmpfile == nil {
 		GLogger.Printf("open file [%s] failed,err:%s", filename, err.Error())
 	} else {
 		defer tmpfile.Close()
-		var i int = 0
+		for _, data := range alldata {
+			if data == nil {
+				continue
+			}
+			for addr, record := range data.Records {
+				s := fmt.Sprintf("%s\t%s\t%s\t%s\t%d\t%d\n", data.ProxyAddr, addr, record.StartTime,
+					record.EndTime, record.OpNum, record.OpFailNum)
+				tmpfile.WriteString(s)
+				//GLogger.Printf("cur proxy data %s [%s]", time.Now().String(), s)
+			}
+		}
+	}
+}
+
+func SaveCurRedisCmd(filename string, cmds *RedisCmdStatistic) {
+	tmpfile, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.ModePerm)
+	if tmpfile == nil {
+		GLogger.Printf("open file [%s] failed,err:%s", filename, err.Error())
+	} else {
+		defer tmpfile.Close()
+
 		for cmdname, cmdinfo := range cmds.Cmds {
+			if cmdinfo.OpNum <= 0 {
+				continue
+			}
 			s := fmt.Sprintf("%s\t%s\t%s\t%d\t%d\t%d\t%d\n", cmdname, cmdinfo.StartTime,
 				cmdinfo.EndTime, cmdinfo.OpNum, cmdinfo.OpSecs, cmdinfo.OpFailNum,
 				cmdinfo.OpFailSecs)
 			tmpfile.WriteString(s)
 			//GLogger.Printf("cur proxy data %s [%s]", time.Now().String(), s)
-			i++
 		}
 	}
 }
 
-func ProcessRedisMoniData(monidata *MoniData) {
+func SaveRedisStatisticCmd(filename string, allcmds [64]*RedisCmdStatistic) {
+	tmpfile, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.ModePerm)
+	if tmpfile == nil {
+		GLogger.Printf("open file [%s] failed,err:%s", filename, err.Error())
+	} else {
+		defer tmpfile.Close()
+		for _, cmds := range allcmds {
+			if cmds == nil {
+				continue
+			}
+			for cmdname, cmdinfo := range cmds.Cmds {
+				if cmdinfo.OpNum <= 0 {
+					continue
+				}
+				s := fmt.Sprintf("%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\n", cmds.ProxyAddr, cmdname, cmdinfo.StartTime,
+					cmdinfo.EndTime, cmdinfo.OpNum, cmdinfo.OpSecs, cmdinfo.OpFailNum,
+					cmdinfo.OpFailSecs)
+				tmpfile.WriteString(s)
+				//GLogger.Printf("cur proxy data %s [%s]", time.Now().String(), s)
+			}
+		}
+	}
+}
+
+func ProcessRedisMoniData(index int, proxyaddr string, monidata *MoniData) {
 	if monidata == nil {
 		return
 	}
 	// 临时统计data变量
 	var TmpRedisData *RedisDataStatistic = &RedisDataStatistic{
-		Records: make(map[string]*RedisDataRecord),
+		ProxyAddr: proxyaddr,
+		Records:   make(map[string]*RedisDataRecord),
 	}
 	// 临时统计cmd变量
 	var TmpRedisCmd *RedisCmdStatistic = &RedisCmdStatistic{
-		Cmds: make(map[string]*RedisCmdRecord),
+		ProxyAddr: proxyaddr,
+		Cmds:      make(map[string]*RedisCmdRecord),
 	}
 
 	// 计算本次临时统计数据
@@ -519,9 +648,16 @@ func ProcessRedisMoniData(monidata *MoniData) {
 			tmpcmd.OpFailSecs += cmdinfo.FailUsecs
 		}
 	}
+
+	PreRedisData := StatisPreRedisData[index]
+	PreRedisCmd := StatisPreRedisCmd[index]
 	// 打印临时数据
+	//GLogger.Printf("----Print pre redis data---")
+	//PrintRedisData(PreRedisData)
 	//GLogger.Printf("----Print tmp redis data---")
 	//PrintRedisData(TmpRedisData)
+	//GLogger.Printf("----Print pre redis cmd, index [%d]----", index)
+	//PrintRedisCmd(PreRedisCmd)
 	//GLogger.Printf("----Print tmp redis cmd----")
 	//PrintRedisCmd(TmpRedisCmd)
 
@@ -569,12 +705,12 @@ func ProcessRedisMoniData(monidata *MoniData) {
 				CurrRedisData.Records[addr] = tmpCur
 			}
 			tmpCur.EndTime = fmt.Sprintf("%d", time.Now().Unix())
-			if record.OpNum > tmpPre.OpNum {
+			if record.OpNum >= tmpPre.OpNum {
 				tmpCur.OpNum += (record.OpNum - tmpPre.OpNum)
 			} else {
 				tmpCur.OpNum += record.OpNum
 			}
-			if record.OpFailNum > tmpPre.OpFailNum {
+			if record.OpFailNum >= tmpPre.OpFailNum {
 				tmpCur.OpFailNum += (record.OpFailNum - tmpPre.OpFailNum)
 			} else {
 				tmpCur.OpFailNum += record.OpFailNum
@@ -585,35 +721,16 @@ func ProcessRedisMoniData(monidata *MoniData) {
 	// 根据临时数据差值更新当前统计(cmd数据)
 	for cmdname, cmdinfo := range TmpRedisCmd.Cmds {
 		if PreRedisCmd == nil {
-			tmpCur := CurrRedisCmd.Cmds[cmdname]
-			if tmpCur == nil {
-				// 且当前也没记录，添加新记录，但计数忽略
-				tmpCur = &RedisCmdRecord{
-					StartTime: fmt.Sprintf("%d", time.Now().Unix()),
-					EndTime:   fmt.Sprintf("%d", time.Now().Unix()),
-				}
-				CurrRedisCmd.Cmds[cmdname] = tmpCur
-			} else {
-				tmpCur.EndTime = fmt.Sprintf("%d", time.Now().Unix())
-			}
+			continue
+		}
+		if PreRedisCmd.ProxyAddr != TmpRedisCmd.ProxyAddr {
 			continue
 		}
 		// 查看先前是否有记录
 		tmpPre := PreRedisCmd.Cmds[cmdname]
 		// 先前没记录
 		if tmpPre == nil {
-			tmpCur := CurrRedisCmd.Cmds[cmdname]
-			if tmpCur == nil {
-				// 且当前也没记录，添加新记录，但计数忽略
-				tmpCur = &RedisCmdRecord{
-					StartTime: fmt.Sprintf("%d", time.Now().Unix()),
-					EndTime:   fmt.Sprintf("%d", time.Now().Unix()),
-				}
-				CurrRedisCmd.Cmds[cmdname] = tmpCur
-			} else {
-				// 当前有记录，更新结束时间,忽略计数
-				tmpCur.EndTime = fmt.Sprintf("%d", time.Now().Unix())
-			}
+			continue
 		} else {
 			// 先前有记录
 			tmpCur := CurrRedisCmd.Cmds[cmdname]
@@ -626,22 +743,22 @@ func ProcessRedisMoniData(monidata *MoniData) {
 				CurrRedisCmd.Cmds[cmdname] = tmpCur
 			}
 			tmpCur.EndTime = fmt.Sprintf("%d", time.Now().Unix())
-			if cmdinfo.OpNum > tmpPre.OpNum {
+			if cmdinfo.OpNum >= tmpPre.OpNum {
 				tmpCur.OpNum += (cmdinfo.OpNum - tmpPre.OpNum)
 			} else {
 				tmpCur.OpNum += cmdinfo.OpNum
 			}
-			if cmdinfo.OpSecs > tmpPre.OpSecs {
+			if cmdinfo.OpSecs >= tmpPre.OpSecs {
 				tmpCur.OpSecs += (cmdinfo.OpSecs - tmpPre.OpSecs)
 			} else {
 				tmpCur.OpSecs += cmdinfo.OpSecs
 			}
-			if cmdinfo.OpFailNum > tmpPre.OpFailNum {
+			if cmdinfo.OpFailNum >= tmpPre.OpFailNum {
 				tmpCur.OpFailNum += (cmdinfo.OpFailNum - tmpPre.OpFailNum)
 			} else {
 				tmpCur.OpFailNum += cmdinfo.OpFailNum
 			}
-			if cmdinfo.OpFailSecs > tmpPre.OpFailSecs {
+			if cmdinfo.OpFailSecs >= tmpPre.OpFailSecs {
 				tmpCur.OpFailSecs += (cmdinfo.OpFailSecs - tmpPre.OpFailSecs)
 			} else {
 				tmpCur.OpFailSecs += cmdinfo.OpFailSecs
@@ -650,8 +767,8 @@ func ProcessRedisMoniData(monidata *MoniData) {
 	}
 
 	// 记录上次统计值
-	PreRedisData = TmpRedisData
-	PreRedisCmd = TmpRedisCmd
+	StatisPreRedisData[index] = TmpRedisData
+	StatisPreRedisCmd[index] = TmpRedisCmd
 
 	// 打印当前数据
 	//GLogger.Printf("----Print cur redis data---")
@@ -671,19 +788,19 @@ func GenStatisRedisCmdName() string {
 func SaveCurRedisRecord() {
 	// redis data statistics
 	tmpfile := GenStatisRedisDataName()
-	SaveRedisStatisticData(tmpfile, &CurrRedisData)
+	SaveCurRedisData(tmpfile, &CurrRedisData)
 
 	// redis cmd statistics
 	tmpfile2 := GenStatisRedisCmdName()
-	SaveRedisStatisticCmd(tmpfile2, &CurrRedisCmd)
+	SaveCurRedisCmd(tmpfile2, &CurrRedisCmd)
 }
 
 func SavePreRedisRecord() {
 	tmpfile1 := GenPreRedisDataName()
-	SaveRedisStatisticData(tmpfile1, PreRedisData)
+	SaveRedisStatisticData(tmpfile1, StatisPreRedisData)
 
 	tmpfile2 := GenPreRedisCmdName()
-	SaveRedisStatisticCmd(tmpfile2, PreRedisCmd)
+	SaveRedisStatisticCmd(tmpfile2, StatisPreRedisCmd)
 }
 
 func LoadRedisData(filename string) *RedisDataStatistic {
@@ -704,7 +821,7 @@ func LoadRedisData(filename string) *RedisDataStatistic {
 		}
 		var redisaddr string
 		var tmpRedisData *RedisDataRecord = &RedisDataRecord{}
-		res, e := fmt.Sscanf(lineData, "%s\t%s\t%s\t%d\t%d\n", &tmpRedisData.StartTime, &tmpRedisData.EndTime, &redisaddr,
+		res, e := fmt.Sscanf(lineData, "%s\t%s\t%s\t%d\t%d\n", &redisaddr, &tmpRedisData.StartTime, &tmpRedisData.EndTime,
 			&tmpRedisData.OpNum, &tmpRedisData.OpFailNum)
 		if res != 5 && e != nil {
 			GLogger.Printf("LoadCurrRedisInfo sscanf [%s] failed,err:%s", lineData, e.Error())
@@ -737,7 +854,7 @@ func LoadRedisCmd(filename string) *RedisCmdStatistic {
 		}
 		var cmdname string
 		var tmpRedisCmd *RedisCmdRecord = &RedisCmdRecord{}
-		res, e := fmt.Sscanf(lineData, "%s\t%s\t%s\t%d\t%d\t%d\t%d\n", &tmpRedisCmd.StartTime, &tmpRedisCmd.EndTime, &cmdname,
+		res, e := fmt.Sscanf(lineData, "%s\t%s\t%s\t%d\t%d\t%d\t%d\n", &cmdname, &tmpRedisCmd.StartTime, &tmpRedisCmd.EndTime,
 			&tmpRedisCmd.OpNum, &tmpRedisCmd.OpSecs, &tmpRedisCmd.OpFailNum, &tmpRedisCmd.OpFailSecs)
 		if res != 7 && e != nil {
 			GLogger.Printf("LoadCurrRedisInfo sscanf [%s] failed,err:%s", lineData, e.Error())
@@ -809,6 +926,7 @@ func LoadCurrRedisInfo() {
 	}
 }
 
+/*
 func LoadPreRedisInfo() {
 	// load redis data
 	tmpfilename1 := GenPreRedisDataName()
@@ -875,7 +993,7 @@ func LoadPreRedisInfo() {
 		}
 	}
 }
-
+*/
 func ResetRedisInfo() {
 	for addr, _ := range CurrRedisData.Records {
 		delete(CurrRedisData.Records, addr)
@@ -901,11 +1019,14 @@ func SavePreProxyRecord() {
 	} else {
 		defer tmpfile.Close()
 		var i int = 0
-		for _, proxy := range GlobalConfig.ProxyList {
+		for _, proxy := range PreStatisticProxyData {
+			if proxy == nil {
+				continue
+			}
 			//GLogger.Printf("start[%s],end[%s]", CurrProxyData[i].StartTime, CurrProxyData[i].EndTime)
-			s := fmt.Sprintf("%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n", proxy.ProxyAddr, PreStatisticProxyData[i].StartTime,
-				PreStatisticProxyData[i].EndTime, PreStatisticProxyData[i].ConnNum, PreStatisticProxyData[i].ConnFailNum,
-				PreStatisticProxyData[i].OpNum, PreStatisticProxyData[i].OpFailNum, PreStatisticProxyData[i].OpSuccNum)
+			s := fmt.Sprintf("%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n", proxy.Addr, proxy.StartTime,
+				proxy.EndTime, proxy.ConnNum, proxy.ConnFailNum,
+				proxy.OpNum, proxy.OpFailNum, proxy.OpSuccNum)
 			tmpfile.WriteString(s)
 			//GLogger.Printf("cur proxy data %s [%s]", time.Now().String(), s)
 			i++
@@ -921,11 +1042,14 @@ func SaveCurProxyRecord() {
 	} else {
 		defer tmpfile.Close()
 		var i int = 0
-		for _, proxy := range GlobalConfig.ProxyList {
+		for _, proxy := range CurrProxyData {
+			if proxy == nil {
+				continue
+			}
 			//GLogger.Printf("start[%s],end[%s]", CurrProxyData[i].StartTime, CurrProxyData[i].EndTime)
-			s := fmt.Sprintf("%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n", proxy.ProxyAddr, CurrProxyData[i].StartTime,
-				CurrProxyData[i].EndTime, CurrProxyData[i].ConnNum, CurrProxyData[i].ConnFailNum,
-				CurrProxyData[i].OpNum, CurrProxyData[i].OpFailNum, CurrProxyData[i].OpSuccNum)
+			s := fmt.Sprintf("%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n", proxy.Addr, proxy.StartTime,
+				proxy.EndTime, proxy.ConnNum, proxy.ConnFailNum,
+				proxy.OpNum, proxy.OpFailNum, proxy.OpSuccNum)
 			tmpfile.WriteString(s)
 			//GLogger.Printf("cur proxy data %s [%s]", time.Now().String(), s)
 			i++
@@ -934,7 +1058,7 @@ func SaveCurProxyRecord() {
 }
 
 func PrintCurrProxyData(proxydata [64]*ProxyPerDataNode) {
-	GLogger.Print("--------Now print proxy data.------")
+	//GLogger.Print("--------Now print proxy data.------")
 	for index, proxy := range proxydata {
 		if proxy != nil {
 			GLogger.Printf("proxy[%d],addr[%s],start[%s],end[%s],connnum[%d],connfailnum[%d],opnum[%d],opfailnum[%d],opsucnum[%d]",
@@ -942,7 +1066,7 @@ func PrintCurrProxyData(proxydata [64]*ProxyPerDataNode) {
 				proxy.OpFailNum, proxy.OpSuccNum)
 		}
 	}
-	GLogger.Print("-------------------------------------------")
+	//GLogger.Print("-------------------------------------------")
 }
 
 func LoadPreProxyData() {
@@ -1061,11 +1185,11 @@ func SendDayReport2(conf *MoniDataConf) error {
 	var proxyData string = ""
 	var redisData string = ""
 	var redisCmd string = ""
+	GLock()
 	proxyDataFileName := GenStatisProxyDataName()
 	proxyDataNode := GetProxyDayData2(proxyDataFileName)
-
 	proxyData = GenProxyDataHtml2(proxyDataNode)
-	GLogger.Printf("SendDayReport2 proxy data:%s", proxyData)
+	//GLogger.Printf("SendDayReport2 proxy data:%s", proxyData)
 
 	// get redis day data statistics
 	redisDataFileName := GenStatisRedisDataName()
@@ -1078,15 +1202,15 @@ func SendDayReport2(conf *MoniDataConf) error {
 	redisCmdS := LoadRedisCmd(redisCmdFileName)
 	redisCmd = GenRedisCmd2(redisCmdS)
 	//GLogger.Printf("SendDayReport2 redis cmd:%s", redisCmd)
-
+	GUnlock()
 	html := GenDaySummaryReportHtml(proxyData, redisData, redisCmd)
 	var Subject string = "Codis集群监控统计 (" + PreTimeFlag + ")"
-	//GLogger.Printf("email[%s],content\n%s\n", Subject, html)
-	err := SendSmtpEmail(GlobalConfig.EmailAddr, conf.EmailPwd, conf.SmtpAddr, conf.ToAddr, Subject, html, "html")
+	GLogger.Printf("email[%s],content\n%s\n", Subject, html)
+	err := SendSmtpEmail(GlobalConfig.EmailAddr, GlobalConfig.EmailPwd, GlobalConfig.SmtpAddr, GlobalConfig.ToAddr, Subject, html, "html")
 	if err != nil {
-		GLogger.Printf("Send Email [%s] to [%s] failed,err:%s\n", Subject, GlobalConfig.ToAddr, err.Error())
+		GLogger.Printf("Send Report Email [%s] to [%s] failed,err:%s\n", Subject, GlobalConfig.ToAddr, err.Error())
 	} else {
-		GLogger.Printf("Send Email [%s] to [%s] success\n", Subject, GlobalConfig.ToAddr)
+		GLogger.Printf("Send Report Email [%s] to [%s] success\n", Subject, GlobalConfig.ToAddr)
 	}
 
 	return nil
@@ -1212,7 +1336,7 @@ var TodayTime time.Time = time.Now()
 var TodayStr string = GetTimeStr(TodayTime)
 
 func TestSendReport() {
-	for i := 0; i < 45; i++ {
+	for i := 0; i < 30; i++ {
 		time.Sleep(time.Second)
 	}
 	//PreTimeFlag = "20160118"
@@ -1288,8 +1412,8 @@ func main() {
 	LoadCurrProxyData()
 	LoadPreProxyData()
 
-	LoadCurrRedisInfo()
-	LoadPreRedisInfo()
+	//LoadCurrRedisInfo()
+	//LoadPreRedisInfo()
 	//PrintConf(GlobalConfig)
 	// get monitor data
 	go func() {
