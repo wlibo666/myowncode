@@ -25,6 +25,7 @@ type MoniDataConf struct {
 	EmailPwd     string      `json:"email_pwd"`
 	SmtpAddr     string      `json:"smtp_addr"`
 	ToAddr       string      `json:"to_addr"`
+	WarnAddr     string      `json:"warn_addr"`
 	SendTime     string      `json:"send_time"`
 	MoniInterval int         `json:"moni_interval"`
 	ProxyList    []ProxyConf `json:"proxy_list"`
@@ -58,6 +59,7 @@ func PrintConf(conf *MoniDataConf) {
 	GLogger.Printf("email_pwd:%s\n", conf.EmailPwd)
 	GLogger.Printf("smtp_addr:%s\n", conf.SmtpAddr)
 	GLogger.Printf("to_addr:%s\n", conf.ToAddr)
+	GLogger.Printf("warn_addr:%s\n", conf.WarnAddr)
 	GLogger.Printf("send_time:%s\n", conf.SendTime)
 	GLogger.Printf("moni_interval:%d\n", conf.MoniInterval)
 
@@ -432,7 +434,7 @@ func CheckServerAndWarn() {
 		GLogger.Printf("something error but now time is too short from last sending warn email,should not send now.")
 		return
 	}
-	err := SendSmtpEmail(GlobalConfig.EmailAddr, GlobalConfig.EmailPwd, GlobalConfig.SmtpAddr, GlobalConfig.ToAddr, Subject, datastr, "text")
+	err := SendSmtpEmail(GlobalConfig.EmailAddr, GlobalConfig.EmailPwd, GlobalConfig.SmtpAddr, GlobalConfig.WarnAddr, Subject, datastr, "text")
 	if err != nil {
 		GLogger.Printf("Send Warn Email [%s] to [%s] failed,err:%s\n", Subject, GlobalConfig.ToAddr, err.Error())
 	} else {
@@ -1333,13 +1335,13 @@ var TodayStr string = GetTimeStr(TodayTime)
 
 func TestSendReport() {
 	PreTimeFlag = TodayStr
-	for i := 0; i < 3600; i++ {
+	for i := 0; i < 300; i++ {
 		time.Sleep(time.Second)
 	}
 
 	SendDayReport2(GlobalConfig)
 
-	//os.Exit(0)
+	os.Exit(0)
 }
 
 func InitLog() {
@@ -1420,7 +1422,7 @@ func main() {
 			os.Exit(2)
 		}
 	}()
-	TestSendReport()
+	//TestSendReport()
 	for {
 		time.Sleep(time.Second * 3600)
 		DeleteExpireFile(2)
