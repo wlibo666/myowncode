@@ -386,10 +386,12 @@ func CollectMoniData(conf *MoniDataConf) error {
 }
 
 var PreEmailTime int64 = 0
+var PreProxyConnFailNum [64]int64
+var PreProxyOpFailNum [64]int64
 
 func CheckServerAndWarn() {
 	var datastr string = ""
-	for _, proxy := range CurrProxyData {
+	for index, proxy := range CurrProxyData {
 		if proxy == nil {
 			continue
 		}
@@ -399,24 +401,30 @@ func CheckServerAndWarn() {
 		}
 		// 连接数失败过多
 		if float64(proxy.ConnFailNum)/float64(proxy.ConnNum) > 0.01 {
-			s := fmt.Sprintf("proxy[%s] connection number [%d] but fail number [%d],please check it.{new-line}",
-				tmpaddr, proxy.ConnNum, proxy.ConnFailNum)
-			datastr += s
+			if PreProxyConnFailNum[index] < proxy.ConnFailNum {
+				s := fmt.Sprintf("proxy[%s] connection number [%d] but fail number [%d],please check it.{new-line}",
+					tmpaddr, proxy.ConnNum, proxy.ConnFailNum)
+				datastr += s
+				PreProxyConnFailNum[index] = proxy.ConnFailNum
+			}
 		}
 		// 操作失败过多
 		if float64(proxy.OpFailNum)/float64(proxy.OpNum) > 0.0002 {
-			s := fmt.Sprintf("proxy[%s] op number [%d] but fail number [%d],please check it.{new-line}",
-				tmpaddr, proxy.OpNum, proxy.OpFailNum)
-			datastr += s
+			if PreProxyOpFailNum[index] < proxy.OpFailNum {
+				s := fmt.Sprintf("proxy[%s] op number [%d] but fail number [%d],please check it.{new-line}",
+					tmpaddr, proxy.OpNum, proxy.OpFailNum)
+				datastr += s
+				PreProxyOpFailNum[index] = proxy.OpFailNum
+			}
 		}
 	}
-	for addr, record := range CurrRedisData.Records {
+	/*for addr, record := range CurrRedisData.Records {
 		if float64(record.OpFailNum)/float64(record.OpNum) > 0.0002 {
 			s := fmt.Sprintf("redis [%s] op number [%d],but fail num [%d],please check it.{new-line}",
 				addr, record.OpNum, record.OpFailNum)
 			datastr += s
 		}
-	}
+	}*/
 
 	if len(datastr) <= 10 {
 		return
@@ -509,6 +517,14 @@ func GenPreRedisDataName() string {
 
 func GenPreRedisCmdName() string {
 	return fmt.Sprintf(".pre_redis_cmd.%s", PreTimeFlag)
+}
+
+func GenNowPreRedisDataName() string {
+	return fmt.Sprintf(".pre_redis_data.%s", TodayStr)
+}
+
+func GenNowPreRedisCmdName() string {
+	return fmt.Sprintf(".pre_redis_cmd.%s", TodayStr)
 }
 
 func SaveCurRedisData(filename string, data *RedisDataStatistic) {
@@ -780,21 +796,29 @@ func GenStatisRedisCmdName() string {
 	return fmt.Sprintf(".statistics_redis_cmd.%s", PreTimeFlag)
 }
 
+func GenNowStatisRedisDataName() string {
+	return fmt.Sprintf(".statistics_redis_data.%s", TodayStr)
+}
+
+func GenNowStatisRedisCmdName() string {
+	return fmt.Sprintf(".statistics_redis_cmd.%s", TodayStr)
+}
+
 func SaveCurRedisRecord() {
 	// redis data statistics
-	tmpfile := GenStatisRedisDataName()
+	tmpfile := GenNowStatisRedisDataName()
 	SaveCurRedisData(tmpfile, &CurrRedisData)
 
 	// redis cmd statistics
-	tmpfile2 := GenStatisRedisCmdName()
+	tmpfile2 := GenNowStatisRedisCmdName()
 	SaveCurRedisCmd(tmpfile2, &CurrRedisCmd)
 }
 
 func SavePreRedisRecord() {
-	tmpfile1 := GenPreRedisDataName()
+	tmpfile1 := GenNowPreRedisDataName()
 	SaveRedisStatisticData(tmpfile1, StatisPreRedisData)
 
-	tmpfile2 := GenPreRedisCmdName()
+	tmpfile2 := GenNowPreRedisCmdName()
 	SaveRedisStatisticCmd(tmpfile2, StatisPreRedisCmd)
 }
 
@@ -866,7 +890,7 @@ func LoadRedisCmd(filename string) *RedisCmdStatistic {
 // 启动系统后从文件中读取上次的redis统计记录
 func LoadCurrRedisInfo() {
 	// load redis data
-	tmpfilename1 := GenStatisRedisDataName()
+	tmpfilename1 := GenNowStatisRedisDataName()
 	tmpfile1, e1 := os.Open(tmpfilename1)
 	if e1 != nil {
 		GLogger.Printf("LoadCurrRedisInfo [%s] failed,err:%s", tmpfilename1, e1.Error())
@@ -893,7 +917,7 @@ func LoadCurrRedisInfo() {
 		}
 	}
 	// load redis cmd
-	tmpfilename2 := GenStatisRedisCmdName()
+	tmpfilename2 := GenNowStatisRedisCmdName()
 	tmpfile2, e2 := os.Open(tmpfilename2)
 	if e2 != nil {
 		GLogger.Printf("LoadCurrRedisInfo [%s] failed,err:%s", tmpfilename2, e2.Error())
@@ -1006,8 +1030,16 @@ func GenPreProxyDataName() string {
 	return fmt.Sprintf(".pre_proxy_data.%s", PreTimeFlag)
 }
 
+func GenNowStatisProxyDataName() string {
+	return fmt.Sprintf(".statistics_proxy_data.%s", TodayStr)
+}
+
+func GenNowPreProxyDataName() string {
+	return fmt.Sprintf(".pre_proxy_data.%s", TodayStr)
+}
+
 func SavePreProxyRecord() {
-	nowproxyfile := GenPreProxyDataName()
+	nowproxyfile := GenNowPreProxyDataName()
 	tmpfile, err := os.OpenFile(nowproxyfile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.ModePerm)
 	if tmpfile == nil {
 		GLogger.Printf("open file [%s] failed,err:%s", nowproxyfile, err.Error())
@@ -1030,7 +1062,7 @@ func SavePreProxyRecord() {
 }
 
 func SaveCurProxyRecord() {
-	nowproxyfile := GenStatisProxyDataName()
+	nowproxyfile := GenNowStatisProxyDataName()
 	tmpfile, err := os.OpenFile(nowproxyfile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.ModePerm)
 	if tmpfile == nil {
 		GLogger.Printf("open file [%s] failed,err:%s", nowproxyfile, err.Error())
@@ -1089,6 +1121,8 @@ func LoadPreProxyData() {
 			continue
 		}
 		tmpProxyData.Addr = proxyAddr
+		tmpProxyData.StartTime = fmt.Sprintf("%d", time.Now().Unix())
+		tmpProxyData.EndTime = fmt.Sprintf("%d", time.Now().Unix())
 		//GLogger.Printf("now will find in proxylist")
 		var i int = 0
 		for _, proxy := range GlobalConfig.ProxyList {
@@ -1109,7 +1143,7 @@ func LoadPreProxyData() {
 
 // 系统启动时从文件中读取上次的proxy统计记录
 func LoadCurrProxyData() {
-	tmpfilename := GenStatisProxyDataName()
+	tmpfilename := GenNowStatisProxyDataName()
 	tmpfile, e := os.Open(tmpfilename)
 	if e != nil {
 		GLogger.Printf("LoadCurrProxyData [%s] failed,err:%s.", tmpfilename, e.Error())
@@ -1133,6 +1167,8 @@ func LoadCurrProxyData() {
 			continue
 		}
 		tmpProxyData.Addr = proxyAddr
+		tmpProxyData.StartTime = fmt.Sprintf("%d", time.Now().Unix())
+		tmpProxyData.EndTime = fmt.Sprintf("%d", time.Now().Unix())
 		//GLogger.Printf("now will find in proxylist")
 		var i int = 0
 		for _, proxy := range GlobalConfig.ProxyList {
@@ -1161,6 +1197,7 @@ func ResetProxyData() {
 			tmp.OpNum = 0
 			tmp.OpFailNum = 0
 			tmp.OpSuccNum = 0
+			tmp.StartTime = fmt.Sprintf("%d", time.Now().Unix())
 		}
 		i++
 	}

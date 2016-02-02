@@ -107,7 +107,7 @@ func pool1Init() *redis.Pool {
 func insertData() {
 	pool1 = poolInit()
 	c := pool1.Get()
-	for i := 10500000; i < 11500000; i++ {
+	for i := 0; i < 11500000; i++ {
 		setKeyValue(i, c)
 		if i%5000 == 0 {
 			fmt.Printf("now [%s] insert suc %d times, fail %d times.\n", time.Now().String(), SuccTimes, FailTimes)
@@ -204,15 +204,16 @@ func insertHashData() {
 }
 
 func usage(program string) {
-	fmt.Printf("%s cmdtype\n", program)
-	fmt.Printf("    cmd{insertData | getData | insertHash | manyConn}\n")
+	fmt.Printf("%s cmdtype redisaddr\n", program)
+	fmt.Printf("    cmd{insertData | getData | insertHash | manyConn}  10.98.28.25:6381\n")
 }
 
 func main() {
-	if len(os.Args) != 2 {
+	if len(os.Args) != 3 {
 		usage(os.Args[0])
 		os.Exit(0)
 	}
+	server1 = os.Args[2]
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func() {
