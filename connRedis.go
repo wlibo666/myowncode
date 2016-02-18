@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -36,21 +37,21 @@ func setKeyValue(i int, c redis.Conn) {
 	t := strconv.Itoa(i)
 	value := "value-" + t + prefix
 
-	reply, err := c.Do("GET", "key-"+t)
+	/*reply, err := c.Do("GET", "key-"+t)
 	if err != nil {
 		fmt.Print("GET key-" + t + " failed,err:." + err.Error() + " \n")
 		return
-	}
-	if reply == nil {
-		_, err := c.Do("SET", "key-"+t, value)
-		if err != nil {
-			FailTimes++
-		} else {
-			SuccTimes++
-		}
+	}*/
+	//if reply == nil {
+	_, err := c.Do("SET", "key-"+t, value)
+	if err != nil {
+		FailTimes++
 	} else {
 		SuccTimes++
 	}
+	//} else {
+	//	SuccTimes++
+	//}
 
 	//time.Sleep(time.Second)
 }
@@ -105,15 +106,50 @@ func pool1Init() *redis.Pool {
 
 // 往redis数据库插入数据
 func insertData() {
+	var wg sync.WaitGroup
+
 	pool1 = poolInit()
+
+	go func() {
+		wg.Add(1)
+		c := pool1.Get()
+		for i := 0; i < 3000000; i++ {
+			setKeyValue(i, c)
+			if i%5000 == 0 {
+				fmt.Printf("now [%s] insert suc %d times, fail %d times.\n", time.Now().String(), SuccTimes, FailTimes)
+			}
+		}
+		defer c.Close()
+		wg.Done()
+		fmt.Printf("now[%s] set key[0-3000000] ok\n")
+	}()
+
+	go func() {
+		wg.Add(1)
+		c := pool1.Get()
+		for i := 3000001; i < 6000000; i++ {
+			setKeyValue(i, c)
+			if i%5000 == 0 {
+				fmt.Printf("now [%s] insert suc %d times, fail %d times.\n", time.Now().String(), SuccTimes, FailTimes)
+			}
+		}
+		defer c.Close()
+		wg.Done()
+		fmt.Printf("now[%s] set key[3000001-6000000] ok\n")
+	}()
+
+	wg.Add(1)
 	c := pool1.Get()
-	for i := 0; i < 11500000; i++ {
+	for i := 6000001; i < 9000000; i++ {
 		setKeyValue(i, c)
 		if i%5000 == 0 {
 			fmt.Printf("now [%s] insert suc %d times, fail %d times.\n", time.Now().String(), SuccTimes, FailTimes)
 		}
 	}
 	defer c.Close()
+	wg.Done()
+	fmt.Printf("now[%s] set key[6000001-9000000] ok\n")
+	wg.Wait()
 	defer pool1.Close()
 }
 

@@ -346,9 +346,7 @@ func GenRedisCmd2(data *RedisCmdStatistic) string {
 	return datastr
 }
 
-var RedisCmdHead string = `<h3>Redis操作统计</h3>
-    <table class="ui-table">
-        <th>操作类型</th><th>操作次数</th><th>单次操作耗时(毫秒)</th><th>失败次数</th><th>平均失败耗时(毫秒)</th>`
+var RedisCmdHead string = `<h3>Redis操作统计</h3><table class="ui-table"><th>操作类型</th><th>操作次数</th><th>单次操作耗时(毫秒)</th><th>失败次数</th><th>平均失败耗时(毫秒)</th>`
 var RedisCmdTemp string = "<tr><td>{cmd-type}</td><td>{op-num}</td><td {op-color}>{op-sec}</td><td>{op-fail}</td><td>{fail-sec}</td></tr>"
 
 var AllRedisCmdNodes map[string]*RedisPerCmdNode = make(map[string]*RedisPerCmdNode)
