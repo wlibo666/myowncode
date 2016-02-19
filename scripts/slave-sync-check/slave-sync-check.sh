@@ -109,7 +109,7 @@ function main()
 	do
 		get_groups
 		check_slave
-		sleep 3600
+		sleep 1200
 	done
 }
 
