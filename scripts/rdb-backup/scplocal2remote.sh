@@ -12,7 +12,7 @@ SRCFILE=$3
 DSTPATH=$4
 
 $EXPECTPATH << EOF
-set timeout 30
+set timeout 1800
 spawn scp $SRCFILE $REMOTE:$DSTPATH
 expect {
 	"continue connecting" { send "yes\r"; exp_continue}

@@ -7,7 +7,12 @@ REDIS_CLI=/home/wangchunyan/install/codis/bin/redis-cli
 REDIS_MAX_DIFF_NUM=1000
 
 CUR_DIR=`pwd`
-CHECK_LOG=$CUR_DIR/slave_sync_check.log
+LOG_FILE=$CUR_DIR/slave_sync_check.log
+
+function sh_log()
+{
+	echo "`date`: $1 $2 $3 $4" >> $LOG_FILE
+}
 
 tmpline=""
 function record_info()
@@ -81,9 +86,9 @@ function check_redis()
 	
 	if [ $diff_num -ge $REDIS_MAX_DIFF_NUM ] ; then
 		ret=`$REDIS_CLI -h $slave_addr -p $slave_port slaveof no one`
-		echo "`date`: set $slave_addr:$slave_port slaveof no one,RET:$ret" >> $CHECK_LOG
+		sh_log "set $slave_addr:$slave_port slaveof no one,RET:$ret"
 		ret=`$REDIS_CLI -h $slave_addr -p $slave_port slaveof $master_addr $master_port`
-		echo "`date`: set $slave_addr:$slave_port slaveof $master_addr $master_port,RET:$ret" >> $CHECK_LOG
+		sh_log "set $slave_addr:$slave_port slaveof $master_addr $master_port,RET:$ret"
 	fi
 }
 
@@ -103,8 +108,10 @@ function check_slave()
 	done <$SERVER_GROUP
 }
 
+SCRIPT_NAME=$0
 function main()
 {
+	sh_log "script [$SCRIPT_NAME] start..."
 	while [ 1 ]
 	do
 		get_groups

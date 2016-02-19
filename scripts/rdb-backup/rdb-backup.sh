@@ -5,13 +5,21 @@ CODIS_CONFIG_FILE=`pwd`/config.ini
 SCP_CMD=`pwd`/scpremote2local.sh
 
 SRCRDBPATH=/letv/run/codis/server
-DSTRDBPATH=/home/wangchunyan/rdbbackup
+DSTRDBPATH=/letv/letv-redis/rdbbackup
 USERNAME=root
-USERPWD="ug3dz1w9XGYaCApy5"
+USERPWD="fW+ug3dz1w9XGYaCApy5"
 
 SERVER_GROUP_TEM=/tmp/server.group
 SERVER_GROUP_ALL=$SERVER_GROUP_TEM.*
 SERVER_GROUP=$SERVER_GROUP_TEM.$$
+
+SCRIPT_NAME=$0
+LOG_FILE=`pwd`/rdb-backup.log
+
+function sh_log()
+{
+	echo "`date`: $1 $2 $3 $4" >> $LOG_FILE
+}
 
 tmpline=""
 function record_info()
@@ -81,6 +89,7 @@ function rdb_backup()
 	$SCP_CMD $remote $USERPWD $rdbfilename $tmpdstfilename
 	if [ -f $tmpdstfilename ] ; then
 		mv $tmpdstfilename $dstfilename
+		sh_log "rdb_backup file $dstfilename success."
 	fi
 }
 
@@ -92,6 +101,7 @@ function slave_rdb_backup()
 		if [ "$flag" != "" ] ; then
 			slave=`echo "$line" | awk -F' ' '{print $1}'`
 			if [ "$slave" != "" ] ; then
+				sh_log "begin rdb_backup $slave"
 				rdb_backup "$slave"
 			fi
 		fi
@@ -101,12 +111,13 @@ function slave_rdb_backup()
 
 function main()
 {
+	sh_log "$SCRIPT_NAME start..."
 	mkdir -p $DSTRDBPATH
 	while [ 1 ]
 	do
 		get_groups
 		slave_rdb_backup
-		sleep 3600
+		sleep 7200
 	done
 }
 
