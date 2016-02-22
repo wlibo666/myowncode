@@ -1,9 +1,12 @@
 #!/bin/bash
 
-CODIS_CONFIG_PROG=/home/wangchunyan/install/codis/bin/codis-config
-CODIS_CONFIG_FILE=/home/wangchunyan/install/codis/conf/config.ini
-SERVER_GROUP=/tmp/server.group
-REDIS_CLI=/home/wangchunyan/install/codis/bin/redis-cli
+CONFIG_FILE=""
+
+CODIS_CONFIG_PROG=""
+CODIS_CONFIG_FILE=""
+SERVER_GROUP=""
+REDIS_CLI=""
+
 REDIS_MAX_DIFF_NUM=1000
 
 CUR_DIR=`pwd`
@@ -12,6 +15,37 @@ LOG_FILE=$CUR_DIR/slave_sync_check.log
 function sh_log()
 {
 	echo "`date`: $1 $2 $3 $4" >> $LOG_FILE
+}
+
+function load_config()
+{
+	CODIS_CONFIG_PROG=`cat $CONFIG_FILE | grep "CODIS_CONFIG_PROG" | awk -F= '{print $2}'`
+	CODIS_CONFIG_FILE=`cat $CONFIG_FILE | grep "CODIS_CONFIG_FILE" | awk -F= '{print $2}'`
+	SERVER_GROUP=`cat $CONFIG_FILE | grep "SERVER_GROUP" | awk -F= '{print $2}'`
+	SERVER_GROUP=$SERVER_GROUP.$$
+	REDIS_CLI=`cat $CONFIG_FILE | grep "REDIS_CLI" | awk -F= '{print $2}'`
+	errorflag=0
+
+	if [ -z "$CODIS_CONFIG_PROG" ] ; then
+		errorflag=1
+		echo "not found CODIS_CONFIG_PROG"
+	fi
+	if [ -z "$CODIS_CONFIG_FILE" ] ; then
+		errorflag=1
+		echo "not found CODIS_CONFIG_FILE"
+	fi
+	if [ -z "$SERVER_GROUP" ] ; then
+		errorflag=1
+		echo "not found SERVER_GROUP"
+	fi
+	if [ -z "$REDIS_CLI" ] ; then
+		errorflag=1
+		echo "not found REDIS_CLI"
+	fi
+
+	if [ $errorflag -eq 1 ] ; then
+		exit 0
+	fi
 }
 
 tmpline=""
@@ -37,7 +71,8 @@ function record_info()
 
 function get_groups()
 {
-	$CODIS_CONFIG_PROG -c $CODIS_CONFIG_FILE server list > /tmp/servergroup.json
+	server_json=/tmp/servergroup.json.$$
+	$CODIS_CONFIG_PROG -c $CODIS_CONFIG_FILE server list > $server_json
 	rm $SERVER_GROUP 1>/dev/null 2>/dev/null
 	beginflag=0
 	endflag=0
@@ -66,7 +101,7 @@ function get_groups()
 			record_info "$line"
 		fi
 
-	done </tmp/servergroup.json
+	done <$server_json
 }
 
 function check_redis()
@@ -112,6 +147,8 @@ SCRIPT_NAME=$0
 function main()
 {
 	sh_log "script [$SCRIPT_NAME] start..."
+	load_config
+
 	while [ 1 ]
 	do
 		get_groups
@@ -119,6 +156,13 @@ function main()
 		sleep 1200
 	done
 }
+
+if [ $# -ne 1 ] ; then
+	echo "usage: $SCRIPT_NAME config_file"
+	exit 0
+fi
+
+CONFIG_FILE=$1
 
 main
 

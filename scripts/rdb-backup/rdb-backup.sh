@@ -3,6 +3,7 @@
 CODIS_CONFIG_PROG=`pwd`/codis-config
 CODIS_CONFIG_FILE=`pwd`/config.ini
 SCP_CMD=`pwd`/scpremote2local.sh
+REMOTE_CMD=`pwd`/execcmdonremote.sh
 
 SRCRDBPATH=/letv/run/codis/server
 DSTRDBPATH=/letv/letv-redis/rdbbackup
@@ -10,7 +11,6 @@ USERNAME=root
 USERPWD="fW+ug3dz1w9XGYaCApy5"
 
 SERVER_GROUP_TEM=/tmp/server.group
-SERVER_GROUP_ALL=$SERVER_GROUP_TEM.*
 SERVER_GROUP=$SERVER_GROUP_TEM.$$
 
 SCRIPT_NAME=$0
@@ -43,8 +43,7 @@ function record_info()
 function get_groups()
 {
 	SERVER_JSON=/tmp/servergroup.json.$$
-	rm -rf /tmp/servergroup.json.* 1>/dev/null 2>/dev/null
-	rm -f $SERVER_GROUP_ALL 1>/dev/null 2>/dev/null
+	
 	$CODIS_CONFIG_PROG -c $CODIS_CONFIG_FILE server list > $SERVER_JSON
 	rm $SERVER_GROUP 1>/dev/null 2>/dev/null
 	beginflag=0
@@ -82,11 +81,18 @@ function rdb_backup()
 	port=`echo "$1" | awk -F: '{print $2}'`
 
 	rdbfilename=$SRCRDBPATH/codis-server-$port.rdb
+	rdbfilenamebak=$SRCRDBPATH/codis-server-$port.rdb.bak
 	tmpdstfilename=$DSTRDBPATH/$ipaddr-codis-server-$port.rdb.latest
 	dstfilename=$DSTRDBPATH/$ipaddr-codis-server-$port.rdb
-	
 	remote=$USERNAME@$ipaddr
-	$SCP_CMD $remote $USERPWD $rdbfilename $tmpdstfilename
+
+	# rename remote rdb file to backup
+	$REMOTE_CMD $remote $USERPWD "mv $rdbfilename $rdbfilenamebak"
+	# scp remote file to local
+	$SCP_CMD $remote $USERPWD $rdbfilenamebak $tmpdstfilename
+	# rename rdb backup file to noraml
+	$REMOTE_CMD $remote $USERPWD "mv $rdbfilenamebak $rdbfilename"
+
 	if [ -f $tmpdstfilename ] ; then
 		mv $tmpdstfilename $dstfilename
 		sh_log "rdb_backup file $dstfilename success."
@@ -105,7 +111,7 @@ function slave_rdb_backup()
 				rdb_backup "$slave"
 			fi
 		fi
-	done <$SERVER_GROUP
+																									done <$SERVER_GROUP
 }
 
 
