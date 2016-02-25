@@ -7,7 +7,7 @@ if [ $# -ne 3 ] ; then
 fi
 
 REMOTE=$1
-USERPWD="$2\r"
+USERPWD="$2"
 CMD=$3
 
 $EXPECTPATH << EOF

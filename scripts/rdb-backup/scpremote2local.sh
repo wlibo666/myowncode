@@ -7,7 +7,7 @@ if [ $# -ne 4 ] ; then
 fi
 
 REMOTE=$1
-USERPWD="$2\r"
+USERPWD="$2"
 SRCFILE=$3
 DSTPATH=$4
 
