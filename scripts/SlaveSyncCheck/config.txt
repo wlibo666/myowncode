@@ -1,0 +1,4 @@
+CODIS_CONFIG_PROG=/letv/codis/bin/codis-config
+CODIS_CONFIG_FILE=/letv/codis/conf/config.ini
+SERVER_GROUP=/tmp/server.group
+REDIS_CLI=/letv/codis/bin/redis-cli
