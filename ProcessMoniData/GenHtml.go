@@ -9,7 +9,8 @@ import (
 	"time"
 )
 
-var FirstBlock string = `<html>
+var FirstBlock string = `
+<html>
 <head>
     <meta charset="utf-8">
     <style type="text/css">
@@ -45,18 +46,42 @@ var FirstBlock string = `<html>
         }
     </style>
 </head>
-    <body>`
+    <body>
+`
 
-var EndBlock string = `</body>
-</html>`
+var EndBlock string = `
+    </body>
+</html>
+`
 
-var TableEndStr string = "</table><hr>"
-var ProxyGlobalHead string = `<h3>代理全局信息统计</h3>
+var TableEndStr string = `
+        </table>
+	<hr>
+`
+var ProxyGlobalHead string = `
+<h3>代理全局信息统计</h3>
     <table class="ui-table">
-        <th>代理地址</th><th>总连接</th><th>处理失败连接</th><th>总操作</th><th>OPS</th><th>处理失败操作</th><th>处理成功操作</th>`
+        <th>代理地址</th>
+	<th>总连接</th>
+	<th>处理失败连接</th>
+	<th>总操作</th>
+	<th>OPS</th>
+	<th>处理失败操作</th>
+	<th>处理成功操作</th>
+`
 
 var BgRedColor string = `bgcolor="red"`
-var ProxyDataTemp string = "<tr><td>{proxy-addr}</td><td>{conn-num}</td><td {conn-color}>{conn-fail}</td><td>{op-num}</td><td>{proxy-ops}</td><td {ops-color}>{op-fail}</td><td>{op-succ}</td></tr>"
+var ProxyDataTemp string = `
+<tr>
+    <td>{proxy-addr}</td>
+    <td>{conn-num}</td>
+    <td {conn-color}>{conn-fail}</td>
+    <td>{op-num}</td>
+    <td>{proxy-ops}</td>
+    <td {ops-color}>{op-fail}</td>
+    <td>{op-succ}</td>
+</tr>
+`
 
 func GenProxyDataHtmlPer(data *ProxyPerDataNode) string {
 	tmpaddr := GetIpAddrByUrl(data.Addr)
@@ -159,10 +184,26 @@ func GenProxyDataHtml(proxyAddr string, data *ProxyPerDataNode) string {
 	return s
 }
 
-var ProxyCmdHead string = `<h3>代理操作统计</h3>
+var ProxyCmdHead string = `
+<h3>代理操作统计</h3>
     <table class="ui-table">
-        <th>代理地址</th><th>操作类型</th><th>操作次数</th><th>操作耗时</th><th>失败次数</th><th>失败耗时</th>`
-var ProxyCmdTemp string = "<tr><td>{proxy-addr}</td><td>{cmd-type}</td><td>{op-num}</td><td>{op-sec}</td><td>{op-fail}</td><td>{fail-sec}</td></tr>"
+        <th>代理地址</th>
+	<th>操作类型</th>
+	<th>操作次数</th>
+	<th>操作耗时</th>
+	<th>失败次数</th>
+	<th>失败耗时</th>
+`
+var ProxyCmdTemp string = `
+<tr>
+    <td>{proxy-addr}</td>
+    <td>{cmd-type}</td>
+    <td>{op-num}</td>
+    <td>{op-sec}</td>
+    <td>{op-fail}</td>
+    <td>{fail-sec}</td>
+</tr>
+`
 
 func GenProxyCmdHtml(proxyAddr string, cmd *ProxyCmdMap) string {
 	var data string = ""
@@ -190,8 +231,22 @@ func GenProxyCmdHtml(proxyAddr string, cmd *ProxyCmdMap) string {
 	return data
 }
 
-var RedisDataHead string = `<h3>Redis全局信息统计</h3><table class="ui-table"><th>Redis地址</th><th>代理地址</th><th>总操作次数</th><th>操作失败次数</th>`
-var RedisDataTemp string = "<tr><td>{redis-addr}</td><td>{proxy-addr}</td><td>{op-num}</td><td>{op-fail}</td>"
+var RedisDataHead string = `
+<h3>Redis全局信息统计</h3>
+    <table class="ui-table">
+    <th>Redis地址</th>
+    <th>代理地址</th>
+    <th>总操作次数</th>
+    <th>操作失败次数</th>
+`
+var RedisDataTemp string = `
+<tr>
+    <td>{redis-addr}</td>
+    <td>{proxy-addr}</td>
+    <td>{op-num}</td>
+    <td>{op-fail}</td>
+</tr>
+`
 
 func GenRedisDataHtml(redisAddr string, cmd *RedisDataMap) string {
 	var data string = ""
@@ -214,8 +269,22 @@ func GenRedisDataHtml(redisAddr string, cmd *RedisDataMap) string {
 	return data
 }
 
-var RedisSummaryHead string = `<h3>Redis全局信息统计</h3><table class="ui-table"><th>Redis地址</th><th>总操作次数</th><th>OPS</th><th>操作失败次数</th>`
-var RedisSummaryTemp string = "<tr><td>{redis-addr}</td><td>{op-num}</td><td>{redis-ops}</td><td {op-color}>{op-fail}</td>"
+var RedisSummaryHead string = `
+<h3>Redis全局信息统计</h3>
+<table class="ui-table">
+    <th>Redis地址</th>
+    <th>总操作次数</th>
+    <th>OPS</th>
+    <th>操作失败次数</th>
+`
+var RedisSummaryTemp string = `
+<tr>
+    <td>{redis-addr}</td>
+    <td>{op-num}</td>
+    <td>{redis-ops}</td>
+    <td {op-color}>{op-fail}</td>
+</tr>
+`
 
 func GenRedisSummaryHtml(redisAddr string, cmd *RedisDataMap) string {
 	var s string = RedisSummaryTemp
@@ -346,8 +415,24 @@ func GenRedisCmd2(data *RedisCmdStatistic) string {
 	return datastr
 }
 
-var RedisCmdHead string = `<h3>Redis操作统计</h3><table class="ui-table"><th>操作类型</th><th>操作次数</th><th>单次操作耗时(毫秒)</th><th>失败次数</th><th>平均失败耗时(毫秒)</th>`
-var RedisCmdTemp string = "<tr><td>{cmd-type}</td><td>{op-num}</td><td {op-color}>{op-sec}</td><td>{op-fail}</td><td>{fail-sec}</td></tr>"
+var RedisCmdHead string = `
+<h3>Redis操作统计</h3>
+<table class="ui-table">
+    <th>操作类型</th>
+    <th>操作次数</th>
+    <th>单次操作耗时(毫秒)</th>
+    <th>失败次数</th>
+    <th>平均失败耗时(毫秒)</th>
+`
+var RedisCmdTemp string = `
+<tr>
+    <td>{cmd-type}</td>
+    <td>{op-num}</td>
+    <td {op-color}>{op-sec}</td>
+    <td>{op-fail}</td>
+    <td>{fail-sec}</td>
+</tr>
+`
 
 var AllRedisCmdNodes map[string]*RedisPerCmdNode = make(map[string]*RedisPerCmdNode)
 

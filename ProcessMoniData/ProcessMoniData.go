@@ -1239,6 +1239,7 @@ func SendDayReport2(conf *MoniDataConf) error {
 	}
 	//GLogger.Printf("SendDayReport2 redis cmd:%s", redisCmd)
 	html := GenDaySummaryReportHtml(proxyData, redisData, redisCmd)
+	html = strings.Replace(html, " >", ">", -1)
 	var Subject string = "Codis集群监控统计 (" + PreTimeFlag + ")"
 	GLogger.Printf("email[%s],content\n%s\n", Subject, html)
 	err := SendSmtpEmail(GlobalConfig.EmailAddr, GlobalConfig.EmailPwd, GlobalConfig.SmtpAddr, GlobalConfig.ToAddr, Subject, html, "html")
