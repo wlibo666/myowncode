@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	server1  string = "10.135.29.168:6666"
-	server2  string = "10.135.29.171:6666"
+	server1  string = "10.135.29.168:6379"
+	server2  string = "10.135.29.171:6379"
 	password string = ""
 )
 

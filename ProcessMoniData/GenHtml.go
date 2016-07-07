@@ -132,6 +132,8 @@ func GenProxyDataHtmlPer(data *ProxyPerDataNode) string {
 	return s
 }
 
+var s string = ""
+
 func GenProxyDataHtml2(data [64]*ProxyPerDataNode) string {
 	var proxydata string = ""
 	for _, proxy := range data {
@@ -141,7 +143,7 @@ func GenProxyDataHtml2(data [64]*ProxyPerDataNode) string {
 		if proxy.OpNum <= 10 {
 			continue
 		}
-		s := GenProxyDataHtmlPer(proxy)
+		s = GenProxyDataHtmlPer(proxy)
 		proxydata += s
 		//GLogger.Printf("tmpproxydata is:%s", proxydata)
 	}
@@ -207,7 +209,6 @@ var ProxyCmdTemp string = `
 
 func GenProxyCmdHtml(proxyAddr string, cmd *ProxyCmdMap) string {
 	var data string = ""
-	var s string = ""
 	/*s := ProxyCmdTemp
 	s = strings.Replace(s, "{proxy-addr}", "ALL", 1)
 	s = strings.Replace(s, "{cmd-type}", "ALL", 1)
@@ -250,7 +251,6 @@ var RedisDataTemp string = `
 
 func GenRedisDataHtml(redisAddr string, cmd *RedisDataMap) string {
 	var data string = ""
-	var s string = ""
 	/*s := RedisDataTemp
 	s = strings.Replace(s, "{redis-addr}", "ALL", 1)
 	s = strings.Replace(s, "{proxy-addr}", "ALL", 1)
@@ -358,6 +358,7 @@ func GenRedisPerRecord(addr string, record *RedisDataRecord) string {
 
 func GenRedisData2(data *RedisDataStatistic) string {
 	var datastr string = ""
+	var allRecord RedisDataRecord
 	for addr, redis := range data.Records {
 		if len(addr) == 0 || redis == nil {
 			continue
@@ -365,9 +366,15 @@ func GenRedisData2(data *RedisDataStatistic) string {
 		if redis.OpNum <= 0 {
 			continue
 		}
-		s := GenRedisPerRecord(addr, redis)
+		allRecord.OpNum += redis.OpNum
+		allRecord.OpFailNum += redis.OpFailNum
+		allRecord.StartTime = redis.StartTime
+		allRecord.EndTime = redis.EndTime
+		s = GenRedisPerRecord(addr, redis)
 		datastr += s
 	}
+	s = GenRedisPerRecord("ALL", &allRecord)
+	datastr += s
 	//GLogger.Printf("data str is:%s", datastr)
 	return datastr
 }
@@ -409,7 +416,7 @@ func GenRedisCmd2(data *RedisCmdStatistic) string {
 		if redis.OpNum <= 0 {
 			continue
 		}
-		s := GenRedisPerCmd(cmdname, redis)
+		s = GenRedisPerCmd(cmdname, redis)
 		datastr += s
 	}
 	return datastr

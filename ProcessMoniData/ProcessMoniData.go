@@ -114,6 +114,20 @@ func NewMoniData() *MoniData {
 	return monidata
 }
 
+func MoniDataInit(data *MoniData) {
+	for _, cmd := range data.ProxyData.ProxyCmdInfos {
+		cmd.Calls = 0
+		cmd.Cmd = ""
+		cmd.FailCalls = 0
+		cmd.FailUsecs = 0
+		cmd.Usecs = 0
+		cmd.UsecsPerCall = 0
+	}
+	/*for _, redis := range ProxyData.RedisCmdInfos {
+		redis.
+	}*/
+}
+
 func PrintMoniData(proxyAddr string, monidata *MoniData) {
 	GLogger.Printf("<<<<<<<<<< proxy [%s] >>>>>>>>>\n", proxyAddr)
 	GLogger.Printf("conn_num:%d\n", monidata.ProxyData.ConnNum)
@@ -255,12 +269,17 @@ var PreStatisticProxyData [64]*ProxyPerDataNode
 var CurrProxyData [64]*ProxyPerDataNode
 
 func CollectMoniData(conf *MoniDataConf) error {
+	var index int = 0
+	var data string = ""
+	var resp *http.Response
+	var err error
+	monidata := NewMoniData()
 	for {
-		var index int = 0
+		index = 0
 
 		//GLogger.Printf("now will get monidata")
 		for _, proxy := range conf.ProxyList {
-			resp, err := http.Get(proxy.ProxyAddr)
+			resp, err = http.Get(proxy.ProxyAddr)
 			if err != nil {
 				GLogger.Printf("Get [%s] failed,err:%s\n", proxy.ProxyAddr, err.Error())
 				continue
@@ -271,9 +290,8 @@ func CollectMoniData(conf *MoniDataConf) error {
 				continue
 			}
 			defer resp.Body.Close()
-			data, err := ioutil.ReadAll(resp.Body)
+			data, err = ioutil.ReadAll(resp.Body)
 			//GLogger.Printf("data:%s\n", string(data))
-			monidata := NewMoniData()
 			err = json.Unmarshal([]byte(data), &monidata)
 			if err != nil {
 				GLogger.Printf("unmarshal data from add [%s] failed,err:%s.\n", proxy.ProxyAddr, err.Error())
