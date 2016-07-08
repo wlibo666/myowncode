@@ -111,7 +111,7 @@ function slave_rdb_backup()
 				rdb_backup "$slave"
 			fi
 		fi
-																									done <$SERVER_GROUP
+	done <$SERVER_GROUP
 }
 
 
