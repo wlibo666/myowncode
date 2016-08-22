@@ -14,10 +14,10 @@ function send_mail()
 {
 	mailtitle="REDIS内存实时统计(`date +"%x %X"`)"
 	subject="`echo $mailtitle |base64`"
-	from="RedisMoni@letv.com"
 
-	echo "$ALL_CONTENT" >> t.txt
 	ALL_CONTENT=$ALL_CONTENT"<tr><td>ALL</td><td>`echo "$ALL_MEM  / 1048576" | bc` M</td></tr>"
+	echo "send monitor data to:$MAIL_ADDR" >> /tmp/redismonitor.txt
+	echo "$ALL_CONTENT" >> /tmp/redismonitor.txt
 	(
 	echo "Subject: =?UTF-8?B?$subject?="
 	echo "MIME-Version: 1.0"
@@ -28,8 +28,7 @@ function send_mail()
 	echo "$HTML_HEAD"
 	echo "$ALL_CONTENT"
 	echo "$HTML_TAIL"
-	) | /usr/sbin/sendmail -f $from -t -i $MAIL_ADDR
-
+	) | /usr/sbin/sendmail -t -i $MAIL_ADDR
 }
 
 TMPFILE=/tmp/.number.swap

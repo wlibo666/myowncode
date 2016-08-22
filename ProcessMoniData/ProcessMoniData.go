@@ -270,7 +270,7 @@ var CurrProxyData [64]*ProxyPerDataNode
 
 func CollectMoniData(conf *MoniDataConf) error {
 	var index int = 0
-	var data string = ""
+	var data []byte
 	var resp *http.Response
 	var err error
 	monidata := NewMoniData()
@@ -460,12 +460,14 @@ func CheckServerAndWarn() {
 		GLogger.Printf("something error but now time is too short from last sending warn email,should not send now.")
 		return
 	}
-	err := SendSmtpEmail(GlobalConfig.EmailAddr, GlobalConfig.EmailPwd, GlobalConfig.SmtpAddr, GlobalConfig.WarnAddr, Subject, datastr, "text")
-	if err != nil {
-		GLogger.Printf("Send Warn Email [%s] to [%s] failed,err:%s\n", Subject, GlobalConfig.ToAddr, err.Error())
-	} else {
-		GLogger.Printf("Send Warn Email [%s] to [%s] success\n", Subject, GlobalConfig.ToAddr)
-		PreEmailTime = t
+	for _, addr := range strings.Split(GlobalConfig.WarnAddr, ";") {
+		err := SendSmtpEmail(GlobalConfig.EmailAddr, GlobalConfig.EmailPwd, GlobalConfig.SmtpAddr, addr, Subject, datastr, "text")
+		if err != nil {
+			GLogger.Printf("Send Warn Email [%s] to [%s] failed,err:%s\n", Subject, addr, err.Error())
+		} else {
+			GLogger.Printf("Send Warn Email [%s] to [%s] success\n", Subject, addr)
+			PreEmailTime = t
+		}
 	}
 }
 
@@ -1260,11 +1262,13 @@ func SendDayReport2(conf *MoniDataConf) error {
 	html = strings.Replace(html, " >", ">", -1)
 	var Subject string = "Codis集群监控统计 (" + PreTimeFlag + ")"
 	GLogger.Printf("email[%s],content\n%s\n", Subject, html)
-	err := SendSmtpEmail(GlobalConfig.EmailAddr, GlobalConfig.EmailPwd, GlobalConfig.SmtpAddr, GlobalConfig.ToAddr, Subject, html, "html")
-	if err != nil {
-		GLogger.Printf("Send Report Email [%s] to [%s] failed,err:%s\n", Subject, GlobalConfig.ToAddr, err.Error())
-	} else {
-		GLogger.Printf("Send Report Email [%s] to [%s] success\n", Subject, GlobalConfig.ToAddr)
+	for _, addr := range strings.Split(GlobalConfig.ToAddr, ";") {
+		err := SendSmtpEmail(GlobalConfig.EmailAddr, GlobalConfig.EmailPwd, GlobalConfig.SmtpAddr, addr, Subject, html, "html")
+		if err != nil {
+			GLogger.Printf("Send Report Email [%s] to [%s] failed,err:%s\n", Subject, addr, err.Error())
+		} else {
+			GLogger.Printf("Send Report Email [%s] to [%s] success\n", Subject, addr)
+		}
 	}
 
 	return nil
@@ -1391,9 +1395,9 @@ var TodayStr string = GetTimeStr(TodayTime)
 
 func TestSendReport() {
 	PreTimeFlag = TodayStr
-	for i := 0; i < 300; i++ {
+	/*for i := 0; i < 300; i++ {
 		time.Sleep(time.Second)
-	}
+	}*/
 
 	SendDayReport2(GlobalConfig)
 

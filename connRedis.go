@@ -62,7 +62,7 @@ func printResult() {
 
 func poolInit() *redis.Pool {
 	return &redis.Pool{
-		MaxIdle:     3,
+		MaxIdle:     200,
 		IdleTimeout: 240 * time.Second,
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial("tcp", server1)
@@ -107,50 +107,29 @@ func pool1Init() *redis.Pool {
 // 往redis数据库插入数据
 func insertData() {
 	var wg sync.WaitGroup
-
+	var begin int = 0
+	var setup int = 150000
 	pool1 = poolInit()
 
-	go func() {
-		wg.Add(1)
-		c := pool1.Get()
-		for i := 0; i < 3000000; i++ {
-			setKeyValue(i, c)
-			if i%5000 == 0 {
-				fmt.Printf("now [%s] insert suc %d times, fail %d times.\n", time.Now().String(), SuccTimes, FailTimes)
+	for pnum := 0; pnum < 200; pnum++ {
+		fmt.Printf("punum[%d],begin[%d],end[%d]\n", pnum, begin, begin+setup)
+		go func() {
+			wg.Add(1)
+			c := pool1.Get()
+			for i := begin; i < begin+setup; i++ {
+				setKeyValue(i, c)
+				if i%5000 == 0 {
+					fmt.Printf("now [%s] insert suc %d times, fail %d times.\n", time.Now().String(), SuccTimes, FailTimes)
+				}
 			}
-		}
-		defer c.Close()
-		wg.Done()
-		fmt.Printf("now[%s] set key[0-3000000] ok\n")
-	}()
-
-	go func() {
-		wg.Add(1)
-		c := pool1.Get()
-		for i := 3000001; i < 6000000; i++ {
-			setKeyValue(i, c)
-			if i%5000 == 0 {
-				fmt.Printf("now [%s] insert suc %d times, fail %d times.\n", time.Now().String(), SuccTimes, FailTimes)
-			}
-		}
-		defer c.Close()
-		wg.Done()
-		fmt.Printf("now[%s] set key[3000001-6000000] ok\n")
-	}()
-
-	wg.Add(1)
-	c := pool1.Get()
-	for i := 6000001; i < 9000000; i++ {
-		setKeyValue(i, c)
-		if i%5000 == 0 {
-			fmt.Printf("now [%s] insert suc %d times, fail %d times.\n", time.Now().String(), SuccTimes, FailTimes)
-		}
+			defer c.Close()
+			wg.Done()
+		}()
+		begin = begin + setup
 	}
-	defer c.Close()
-	wg.Done()
-	fmt.Printf("now[%s] set key[6000001-9000000] ok\n")
+
+	//wg.Done()
 	wg.Wait()
-	defer pool1.Close()
 }
 
 func manyConn() {
