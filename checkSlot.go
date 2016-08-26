@@ -1,13 +1,10 @@
 package main
 
 import (
-	md "../codis/pkg/models"
 	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/garyburd/redigo/redis"
-	"github.com/wandoulabs/zkhelper"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -17,6 +14,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	md "../codis/pkg/models"
+	"github.com/garyburd/redigo/redis"
+	"github.com/wandoulabs/zkhelper"
 )
 
 var MaxSlotNum uint32 = 1024
@@ -175,54 +176,64 @@ func execResult(cmdstr string) string {
 	return string(bytes)
 }
 
-var GredisCmd string = "/letv/codis/bin/redis-cli -p 6381 "
+const (
+	REDEIS_CLI = "/letv/codis/bin/redis-cli -h "
+)
 
-func getPerFieldLen(c redis.Conn, key string, keytype string) int {
-	var pervaluelen int = 0
+func getKeySize(c redis.Conn, key string, keylen int64, keytype string) int64 {
+	var cmd string
+
 	switch keytype {
 	case "hash":
-		cmdstr := GredisCmd + "hscan " + key + " 0 count 1"
-		Slog.Printf("now will hscan key[%s],cmd[%s]", key, cmdstr)
-		res := execResult(cmdstr)
-		//Slog.Printf("res:%s", res)
-		reslen := len(res)
-		if reslen > 0 {
-			pervaluelen = (reslen - len(key)) / 2
-		}
+		cmd = REDEIS_CLI + strings.Split(RedisAddr, ":")[0] + " -p " + strings.Split(RedisAddr, ":")[1] + " hscan " + key + " 0 count 1"
 	case "list":
-		cmdstr := GredisCmd + "lindex " + key + " 0"
-		Slog.Printf("now will lindex key[%s],cmd[%s]", key, cmdstr)
-		res := execResult(cmdstr)
-		reslen := len(res)
-		if reslen > 0 {
-			pervaluelen = reslen
-		}
+		cmd = REDEIS_CLI + strings.Split(RedisAddr, ":")[0] + " -p " + strings.Split(RedisAddr, ":")[1] + " lindex " + key + " 0"
 	case "set":
-		cmdstr := GredisCmd + "sscan " + key + " 0 count 1"
-		Slog.Printf("now will sscan key[%s],cmd[%s]", key, cmdstr)
-		res := execResult(cmdstr)
-		reslen := len(res)
-		if reslen > 0 {
-			pervaluelen = reslen
-		}
+		cmd = REDEIS_CLI + strings.Split(RedisAddr, ":")[0] + " -p " + strings.Split(RedisAddr, ":")[1] + " sscan " + key + " 0 count 1"
 	case "zset":
-		cmdstr := GredisCmd + "zscan " + key + " 1 count 1"
-		Slog.Printf("now will zscan key[%s],cmd[%s]", key, cmdstr)
-		res := execResult(cmdstr)
-		reslen := len(res)
-		if reslen > 0 {
-			pervaluelen = reslen / 4
-		}
-
+		cmd = REDEIS_CLI + strings.Split(RedisAddr, ":")[0] + " -p " + strings.Split(RedisAddr, ":")[1] + " zscan " + key + " 1 + count 1"
+	case "string":
+		return keylen
 	default:
-		return 0
-
+		return 8
 	}
 
-	return pervaluelen
+	keysize := len(execResult(cmd))
+	if keysize == 0 {
+		return 8
+	}
+	return int64(keysize) * keylen
 }
 
-func saveBigKeys(slotIndex int, key string, keytype string, fieldlen int, pervaluelen int) {
+func getKeySize2(c redis.Conn, key string, keylen int64, keytype string) int64 {
+	var reply interface{}
+	var err error
+
+	switch keytype {
+	case "hash":
+		reply, err = c.Do("hscan", key, "0", "count", "1")
+	case "list":
+		reply, err = c.Do("lindex", key, "0")
+	case "set":
+		reply, err = c.Do("sscan", key, "0", "count", "1")
+	case "zset":
+		reply, err = c.Do("zscan", key, "1", "count", "1")
+	case "string":
+		return keylen
+	default:
+		return 8
+	}
+	if err != nil {
+		return keylen * 8
+	}
+	keysize := len(fmt.Sprintf("%q", reply))
+	if keysize == 0 {
+		return keylen * 8
+	}
+	return int64(keysize) * keylen
+}
+
+func saveBigKeys(slotIndex int, key string, keytype string, fieldlen int, keysize int64) {
 	addr := strings.Split(RedisAddr, ":")
 	var filename string = "./" + addr[0] + ".bigkeys"
 
@@ -232,78 +243,83 @@ func saveBigKeys(slotIndex int, key string, keytype string, fieldlen int, perval
 		return
 	}
 	defer fp.Close()
-	keyinfo := fmt.Sprintf("%d\t%s\t%s\t%d\t%d\t%d\n", slotIndex, key, keytype, fieldlen, pervaluelen, fieldlen*pervaluelen)
+	keyinfo := fmt.Sprintf("%d\t%s\t%s\t%d\t%d\n", slotIndex, key, keytype, fieldlen, keysize)
 	fp.WriteString(keyinfo)
 	return
 }
 
-func checkPerKey(c redis.Conn, key string) error {
-	keytype, err := c.Do("TYPE", key)
-	if err != nil {
-		Slog.Printf("Do TYPE [%s] failed,err:%s", key, err.Error())
-		return errors.New("get type of key failed")
-	}
-	var reply interface{}
-	var keylen int64
-	switch keytype {
-	case "string":
-		reply, err = c.Do("STRLEN", key)
-	case "list":
-		reply, err = c.Do("LLEN", key)
-	case "set":
-		reply, err = c.Do("SCARD", key)
-	case "zset":
-		reply, err = c.Do("ZCARD", key)
-	case "hash":
-		reply, err = c.Do("HLEN", key)
-	case "none":
-		Slog.Printf("key [%s] type [none], may be deleted.", key)
-	default:
-		Slog.Printf("key [%s] type [%s] is invalid", key, keytype)
-		return errors.New("key type is invalid")
-	}
-	if keytype == "none" {
-		return nil
-	}
+var Gchan chan string
+var Gnum [10]int64
 
-	var slotIndex int = hashSlot([]byte(key))
-	checkInvalidData(c, key, keytype.(string), slotIndex)
+func checkPerKey(index int) error {
+	c := RedisPool.Get()
+	if c == nil {
+		fmt.Printf("get poll failed")
+		return errors.New("get client from RedisPool failed.")
+	}
+	defer c.Close()
 
-	if err != nil {
-		Slog.Printf("key [%s] get len failed,err:%s", key, err.Error())
-		return errors.New("get key len failed")
-	}
-	if reply == nil {
-		Slog.Printf("key [%s],type [%s], value is nil, slot [%d] can migrate.", key, keytype, hashSlot([]byte(key)))
-		return nil
-	}
-	switch reply.(type) {
-	case string:
-		{
-			keylen, err = strconv.ParseInt(reply.(string), 10, 64)
-			if err != nil {
-				Slog.Printf("key [%s] invalid keylen [%s]", key, reply)
-				return errors.New("parse int failed")
+	for key := range Gchan {
+		keytype, err := c.Do("TYPE", key)
+		if err != nil {
+			Slog.Printf("Do TYPE [%s] failed,err:%s", key, err.Error())
+			continue
+		}
+		var reply interface{}
+		var keylen int64
+		switch keytype {
+		case "string":
+			reply, err = c.Do("STRLEN", key)
+		case "list":
+			reply, err = c.Do("LLEN", key)
+		case "set":
+			reply, err = c.Do("SCARD", key)
+		case "zset":
+			reply, err = c.Do("ZCARD", key)
+		case "hash":
+			reply, err = c.Do("HLEN", key)
+		case "none":
+			Slog.Printf("key [%s] type [none], may be deleted.", key)
+			continue
+		default:
+			Slog.Printf("key [%s] type [%s] is invalid", key, keytype)
+			continue
+		}
+		var slotIndex int = hashSlot([]byte(key))
+		checkInvalidData(c, key, keytype.(string), slotIndex)
+
+		if err != nil {
+			Slog.Printf("key [%s] get len failed,err:%s", key, err.Error())
+			continue
+		}
+		if reply == nil {
+			Slog.Printf("key [%s],type [%s], value is nil, slot [%d] can migrate.", key, keytype, hashSlot([]byte(key)))
+			continue
+		}
+		switch reply.(type) {
+		case string:
+			{
+				keylen, err = strconv.ParseInt(reply.(string), 10, 64)
+				if err != nil {
+					Slog.Printf("key [%s] invalid keylen [%s]", key, reply)
+					continue
+				}
 			}
+		case int64:
+			keylen = reply.(int64)
+		default:
+			keylen = reply.(int64)
 		}
-	case int64:
-		keylen = reply.(int64)
-	default:
-		keylen = reply.(int64)
+
+		keysize := getKeySize2(c, key, keylen, keytype.(string))
+		Gnum[index] = (Gnum[index] + keysize)
+		Slog.Printf("key[%s],type[%s], key size[%d]", key, keytype, keysize)
+		if keysize > 1024*1024*3 {
+			AllSlots.failflag[slotIndex] = true
+			saveBigKeys(slotIndex, key, keytype.(string), int(keylen), keysize)
+		}
 	}
 
-	if keylen > 4096 {
-		Slog.Printf("key [%s],type [%s], len is [%d],too long,slot [%d] should not migrate", key, keytype, keylen, slotIndex)
-		AllSlots.failflag[slotIndex] = true
-		pervaluelen := getPerFieldLen(c, key, keytype.(string))
-		Slog.Printf("get key[%s],type[%s],pervalue len[%d]", key, keytype, pervaluelen)
-		if pervaluelen > 0 {
-			saveBigKeys(slotIndex, key, keytype.(string), int(keylen), pervaluelen)
-		}
-		return nil
-		//return errors.New("key's len is too long")
-	}
-	Slog.Printf("key [%s],type [%s], len is [%d],slot [%d] can migrate", key, keytype, keylen, slotIndex)
 	return nil
 }
 
@@ -315,6 +331,15 @@ func checkKeysFile(filename string) error {
 	}
 	Slog.Println("redis RedisPool init success")
 	defer RedisPool.Close()
+
+	Gchan = make(chan string, 10)
+	for i := 0; i < 10; i++ {
+		Gnum[i] = 0
+		go func(index int) {
+			checkPerKey(index)
+		}(i)
+	}
+
 	f, err := os.Open(filename)
 	if err != nil {
 		fmt.Printf("open file [%s] failed\n", filename)
@@ -325,12 +350,6 @@ func checkKeysFile(filename string) error {
 	var checkNum int32 = 0
 	Slog.Println("now begin check kyes...")
 
-	c := RedisPool.Get()
-	if c == nil {
-		fmt.Printf("get poll failed")
-		return errors.New("get client from RedisPool failed.")
-	}
-	defer c.Close()
 	for {
 		line, err := rd.ReadString('\n')
 		if err != nil || io.EOF == err {
@@ -342,13 +361,10 @@ func checkKeysFile(filename string) error {
 		if (checkNum % 5000) == 0 {
 			fmt.Printf("now [%v] check keys num [%v]\n", time.Now(), checkNum)
 		}
-		//fmt.Printf("now check key[%s]\n", line)
-		err = checkPerKey(c, line)
-		if err != nil {
-			Slog.Printf("check key [%s], slot [%d] failed,err:%s", line, hashSlot([]byte(line)), err.Error())
-			continue
-		}
+		Gchan <- line
 	}
+	time.Sleep(2 * time.Second)
+	close(Gchan)
 	return nil
 }
 
@@ -396,6 +412,13 @@ func printSlotCheckResult() {
 			//fmt.Printf("slot [%d] can not be migrated\n", i)
 		}
 	}
+
+	var AllSize int64 = 0
+	for i := 0; i < 10; i++ {
+		AllSize = (AllSize + Gnum[i])
+	}
+	fmt.Printf("AllKeySize:%d\n", AllSize)
+	Slog.Printf("AllKeySize:%d\n", AllSize)
 }
 
 func usage(pragramName string) {
